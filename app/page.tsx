@@ -80,6 +80,11 @@ export default function POSTerminal() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId))
   }
 
+  // ✅ FIX: Cart එක Clear වෙන විදියට Function එක හදාගත්තා
+  const handleClearCart = () => {
+    setCart([])
+  }
+
   const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
     if (cart.length === 0) return alert('Cart is empty!')
     setProcessing(true)
@@ -141,8 +146,9 @@ export default function POSTerminal() {
       {/* 🧾 RIGHT SECTION */}
       <CartSidebar
         cart={cart}
-        updateQuantity={updateQuantity}
+        onUpdateQuantity={updateQuantity}
         removeFromCart={removeFromCart}
+        onClearCart={handleClearCart}
         handleCheckout={handleCheckout}
         processing={processing}
       />

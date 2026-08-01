@@ -16,11 +16,16 @@ export default function ProductCard({ product, onAddToCart }: ProductCardProps) 
       className="bg-slate-900/60 border border-slate-800/80 hover:border-sky-500/50 rounded-xl p-4 flex flex-col justify-between cursor-pointer transition transform hover:-translate-y-1 shadow-md group"
     >
       <div>
-        <div className="h-28 w-full bg-slate-800 rounded-lg overflow-hidden mb-3">
+        <div className="h-28 w-full bg-slate-800 rounded-lg overflow-hidden mb-3 relative flex items-center justify-center">
           {product.image_url ? (
             <img
               src={product.image_url}
               alt={product.name}
+              onError={(e) => {
+                // Image URL එක බ්‍රෝකන් වුණොත්/වැඩ නැත්නම් මේ Default Image එක ලෝඩ් වෙනවා
+                ;(e.target as HTMLImageElement).src =
+                  'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400'
+              }}
               className="h-full w-full object-cover group-hover:scale-105 transition duration-300"
             />
           ) : (
