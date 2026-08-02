@@ -10,9 +10,6 @@ import SalesChart from './SalesChart'
 import ProductForm from './ProductForm'
 import InventoryTable from './InventoryTable'
 
-
-
-
 interface OrderSummary {
   id: number
   total_amount: number
@@ -64,6 +61,27 @@ export default function AdminDashboard() {
     setStock(product.stock_quantity.toString())
     setCategoryId(product.category_id ? product.category_id.toString() : '')
     setImageUrl(product.image_url || '')
+  }
+
+  // 🗑️ NEW: Product Delete Handler
+  const handleDeleteProduct = async (productId: number, productName: string) => {
+    const confirmDelete = window.confirm(`Are you sure you want to delete "${productName}"?`)
+    if (!confirmDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('products')
+        .delete()
+        .eq('id', productId)
+
+      if (error) throw error
+
+      alert('Product deleted successfully! 🗑️')
+      // List එකෙන් Delete වූ product එක ඉවත් කර state එක instant update කිරීම
+      setProducts((prev) => prev.filter((p) => p.id !== productId))
+    } catch (err: any) {
+      alert('Failed to delete product: ' + err.message)
+    }
   }
 
   const resetForm = () => {
@@ -180,7 +198,12 @@ export default function AdminDashboard() {
           resetForm={resetForm}
         />
 
-        <InventoryTable products={products} handleEditClick={handleEditClick} />
+        {/* 🗑️ Here we pass handleOnDeleteClick to InventoryTable */}
+        <InventoryTable
+          products={products}
+          handleEditClick={handleEditClick}
+          onDeleteClick={handleDeleteProduct}
+        />
       </div>
     </div>
   )
