@@ -25,7 +25,7 @@ export default function POSTerminal() {
   const fetchData = async () => {
     setLoading(true)
     const { data: catData } = await supabase.from('categories').select('*')
-    const { data: prodData } = await supabase.from('products').select('*')
+    const { data: prodData } = await supabase.from('products').select('*').order('id', { ascending: true })
 
     if (catData) setCategories(catData)
     if (prodData) setProducts(prodData)
@@ -40,14 +40,17 @@ export default function POSTerminal() {
     return matchesCategory && matchesSearch
   })
 
+  // 🛒 Cart එකට Add කරද්දී Stock Limit Check කිරීම
   const addToCart = (product: Product) => {
-    if (product.stock_quantity <= 0) return alert('Out of stock!')
+    if (product.stock_quantity <= 0) {
+      return alert('Out of stock! මේ Item එකේ Stock ඉවරයි.')
+    }
 
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
         if (existing.quantity >= product.stock_quantity) {
-          alert('Cannot add more than available stock!')
+          alert(`Cannot add more! Only ${product.stock_quantity} items available in stock.`)
           return prev
         }
         return prev.map((item) =>
@@ -58,6 +61,7 @@ export default function POSTerminal() {
     })
   }
 
+  // ➕/➖ Quantity වෙනස් කරද්දී Stock Check කිරීම
   const updateQuantity = (productId: number, delta: number) => {
     setCart((prev) =>
       prev
@@ -65,7 +69,7 @@ export default function POSTerminal() {
           if (item.product.id === productId) {
             const newQty = item.quantity + delta
             if (newQty > item.product.stock_quantity) {
-              alert('Reached maximum stock limit!')
+              alert(`Maximum stock limit reached! Only ${item.product.stock_quantity} available.`)
               return item
             }
             return newQty > 0 ? { ...item, quantity: newQty } : null
@@ -80,17 +84,36 @@ export default function POSTerminal() {
     setCart((prev) => prev.filter((item) => item.product.id !== productId))
   }
 
-  // ✅ FIX: Cart එක Clear වෙන විදියට Function එක හදාගත්තා
   const handleClearCart = () => {
     setCart([])
   }
 
+  // 💳 Checkout Logic (Order + Items + Stock Deduct)
   const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
     if (cart.length === 0) return alert('Cart is empty!')
     setProcessing(true)
 
     try {
+      // 1. Double Check Stock directly from DB before order placement
+      for (const item of cart) {
+        const { data: latestProd } = await supabase
+          .from('products')
+          .select('stock_quantity, name')
+          .eq('id', item.product.id)
+          .single()
+
+        if (!latestProd || latestProd.stock_quantity < item.quantity) {
+          throw new Error(
+            `Not enough stock for "${item.product.name}". Only ${
+              latestProd ? latestProd.stock_quantity : 0
+            } left!`
+          )
+        }
+      }
+
       const totalAmount = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+
+      // 2. Insert Order
       const { data: order, error: orderErr } = await supabase
         .from('orders')
         .insert([{ total_amount: totalAmount, payment_method: paymentMethod }])
@@ -99,6 +122,7 @@ export default function POSTerminal() {
 
       if (orderErr) throw orderErr
 
+      // 3. Insert Order Items
       const orderItems = cart.map((item) => ({
         order_id: order.id,
         product_id: item.product.id,
@@ -109,16 +133,21 @@ export default function POSTerminal() {
       const { error: itemsErr } = await supabase.from('order_items').insert(orderItems)
       if (itemsErr) throw itemsErr
 
+      // 4. Update/Deduct Product Stock in DB safely
       for (const item of cart) {
-        await supabase
+        const newStock = Math.max(0, item.product.stock_quantity - item.quantity)
+
+        const { error: stockErr } = await supabase
           .from('products')
-          .update({ stock_quantity: item.product.stock_quantity - item.quantity })
+          .update({ stock_quantity: newStock })
           .eq('id', item.product.id)
+
+        if (stockErr) throw stockErr
       }
 
       alert('Sale Completed Successfully! 🎉')
       setCart([])
-      fetchData()
+      fetchData() // Refresh products grid to show updated stock values
     } catch (err: any) {
       alert('Checkout failed: ' + err.message)
     } finally {
