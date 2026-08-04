@@ -12,9 +12,20 @@ export interface Product {
   stock_quantity: number
   category_id: number
   image_url: string
+  discount_percentage?: number
+  unit_type?: 'unit' | 'kg' | 'g'
 }
 
 export interface CartItem {
   product: Product
   quantity: number
+}
+// 🧾 Admin Receipt Customizer Settings Type
+export interface ReceiptSettings {
+  storeName: string
+  storeAddress: string
+  storePhone: string
+  showOriginalPrice: boolean   
+  showSavingsBanner: boolean   
+  footerMessage: string        
 }

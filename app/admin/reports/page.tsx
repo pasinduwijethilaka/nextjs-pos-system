@@ -1,9 +1,11 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { ShoppingBag, DollarSign, Calendar, RefreshCw, Printer } from 'lucide-react'
 import ReceiptModal from '@/components/ReceiptModal'
+import AdminAuthModal from '../AdminAuthModal'
 
 interface OrderItem {
   id: number
@@ -24,6 +26,12 @@ interface Order {
 }
 
 export default function ReportsPage() {
+  const router = useRouter()
+
+  // 🔐 1. Authentication States
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(true)
+
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -31,9 +39,26 @@ export default function ReportsPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
 
+  // 🔐 2. Check Session Storage on Mount
   useEffect(() => {
-    fetchOrders()
+    const authStatus = sessionStorage.getItem('isAdminAuthenticated')
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+      setShowAuthModal(false)
+      fetchOrders()
+    }
   }, [])
+
+  const handleAuthSuccess = () => {
+    setIsAuthenticated(true)
+    setShowAuthModal(false)
+    sessionStorage.setItem('isAdminAuthenticated', 'true')
+    fetchOrders()
+  }
+
+  const handleAuthCancel = () => {
+    router.push('/') // Cancel කළොත් Main Terminal එකට Redirect වෙනවා
+  }
 
   const fetchOrders = async () => {
     setLoading(true)
@@ -74,6 +99,20 @@ export default function ReportsPage() {
     setIsReceiptOpen(true)
   }
 
+  // 🔐 3. Auth වී නැත්නම් Modal එක පෙන්වීම
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <AdminAuthModal
+          isOpen={showAuthModal}
+          onSuccess={handleAuthSuccess}
+          onCancel={handleAuthCancel}
+        />
+      </div>
+    )
+  }
+
+  // 🔐 4. Auth වූ පසු පෙන්වන Reports Page UI එක
   return (
     <div className="p-8 bg-slate-950 min-h-screen text-slate-100 font-sans">
       {/* Header */}

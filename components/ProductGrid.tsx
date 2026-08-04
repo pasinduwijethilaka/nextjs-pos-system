@@ -12,11 +12,21 @@ interface ProductGridProps {
 
 export default function ProductGrid({ products, loading, onAddToCart }: ProductGridProps) {
   if (loading) {
-    return <p className="text-slate-400 col-span-full text-center py-10">Loading catalog...</p>
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-slate-400 text-center py-10 animate-pulse">
+          Loading catalog...
+        </p>
+      </div>
+    )
   }
 
   if (products.length === 0) {
-    return <p className="text-slate-400 col-span-full text-center py-10">No products found.</p>
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <p className="text-slate-400 text-center py-10">No products found.</p>
+      </div>
+    )
   }
 
   return (

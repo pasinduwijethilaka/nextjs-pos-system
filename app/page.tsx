@@ -9,6 +9,15 @@ import CategoryFilter from '@/components/CategoryFilter'
 import ProductGrid from '@/components/ProductGrid'
 import CartSidebar from '@/components/CartSidebar'
 
+// 🏷️ Helper to calculate effective price after item discount
+export const getEffectivePrice = (product: Product): number => {
+  if (product.discount_percentage && product.discount_percentage > 0) {
+    const discountAmount = (product.price * product.discount_percentage) / 100
+    return product.price - discountAmount
+  }
+  return product.price
+}
+
 export default function POSTerminal() {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -25,7 +34,10 @@ export default function POSTerminal() {
   const fetchData = async () => {
     setLoading(true)
     const { data: catData } = await supabase.from('categories').select('*')
-    const { data: prodData } = await supabase.from('products').select('*').order('id', { ascending: true })
+    const { data: prodData } = await supabase
+      .from('products')
+      .select('*')
+      .order('id', { ascending: true })
 
     if (catData) setCategories(catData)
     if (prodData) setProducts(prodData)
@@ -40,8 +52,8 @@ export default function POSTerminal() {
     return matchesCategory && matchesSearch
   })
 
-  // 🛒 Cart එකට Add කරද්දී Stock Limit Check කිරීම
-  const addToCart = (product: Product) => {
+  // 🛒 Cart එකට Add කරද්දී Stock Limit Check කිරීම (Supports initial weight as well)
+  const addToCart = (product: Product, initialQty: number = 1) => {
     if (product.stock_quantity <= 0) {
       return alert('Out of stock! මේ Item එකේ Stock ඉවරයි.')
     }
@@ -49,30 +61,36 @@ export default function POSTerminal() {
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id)
       if (existing) {
-        if (existing.quantity >= product.stock_quantity) {
-          alert(`Cannot add more! Only ${product.stock_quantity} items available in stock.`)
+        const newQty = Number((existing.quantity + initialQty).toFixed(3))
+        if (newQty > product.stock_quantity) {
+          alert(`Cannot add more! Only ${product.stock_quantity}${product.unit_type === 'kg' ? ' Kg' : ''} available in stock.`)
           return prev
         }
         return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.product.id === product.id ? { ...item, quantity: newQty } : item
         )
       }
-      return [...prev, { product, quantity: 1 }]
+      return [...prev, { product, quantity: initialQty }]
     })
   }
 
-  // ➕/➖ Quantity වෙනස් කරද්දී Stock Check කිරීම
-  const updateQuantity = (productId: number, delta: number) => {
+  // ➕/➖ Quantity හෝ Exact Weight වෙනස් කරද්දී Stock Check කිරීම
+  const updateQuantity = (productId: number, newQtyOrDelta: number, isDirectValue: boolean = false) => {
     setCart((prev) =>
       prev
         .map((item) => {
           if (item.product.id === productId) {
-            const newQty = item.quantity + delta
-            if (newQty > item.product.stock_quantity) {
-              alert(`Maximum stock limit reached! Only ${item.product.stock_quantity} available.`)
+            const calculatedQty = isDirectValue 
+              ? newQtyOrDelta 
+              : item.quantity + newQtyOrDelta
+
+            const finalQty = Number(calculatedQty.toFixed(3))
+
+            if (finalQty > item.product.stock_quantity) {
+              alert(`Maximum stock limit reached! Only ${item.product.stock_quantity}${item.product.unit_type === 'kg' ? ' Kg' : ''} available.`)
               return item
             }
-            return newQty > 0 ? { ...item, quantity: newQty } : null
+            return finalQty > 0 ? { ...item, quantity: finalQty } : null
           }
           return item
         })
@@ -98,20 +116,25 @@ export default function POSTerminal() {
       for (const item of cart) {
         const { data: latestProd } = await supabase
           .from('products')
-          .select('stock_quantity, name')
+          .select('stock_quantity, name, unit_type')
           .eq('id', item.product.id)
           .single()
 
         if (!latestProd || latestProd.stock_quantity < item.quantity) {
+          const unitLabel = latestProd?.unit_type === 'kg' ? 'Kg' : ''
           throw new Error(
             `Not enough stock for "${item.product.name}". Only ${
               latestProd ? latestProd.stock_quantity : 0
-            } left!`
+            } ${unitLabel} left!`
           )
         }
       }
 
-      const totalAmount = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0)
+      // 🏷️ Calculate Total with Discounted Prices
+      const totalAmount = cart.reduce(
+        (sum, item) => sum + getEffectivePrice(item.product) * item.quantity,
+        0
+      )
 
       // 2. Insert Order
       const { data: order, error: orderErr } = await supabase
@@ -122,12 +145,12 @@ export default function POSTerminal() {
 
       if (orderErr) throw orderErr
 
-      // 3. Insert Order Items
+      // 3. Insert Order Items (with discounted unit price)
       const orderItems = cart.map((item) => ({
         order_id: order.id,
         product_id: item.product.id,
         quantity: item.quantity,
-        unit_price: item.product.price,
+        unit_price: getEffectivePrice(item.product),
       }))
 
       const { error: itemsErr } = await supabase.from('order_items').insert(orderItems)
@@ -135,7 +158,7 @@ export default function POSTerminal() {
 
       // 4. Update/Deduct Product Stock in DB safely
       for (const item of cart) {
-        const newStock = Math.max(0, item.product.stock_quantity - item.quantity)
+        const newStock = Math.max(0, Number((item.product.stock_quantity - item.quantity).toFixed(3)))
 
         const { error: stockErr } = await supabase
           .from('products')

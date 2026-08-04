@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Product, Category } from '@/types'
 import { ArrowLeft } from 'lucide-react'
@@ -9,6 +10,8 @@ import SummaryCards from './SummaryCards'
 import SalesChart from './SalesChart'
 import ProductForm from './ProductForm'
 import InventoryTable from './InventoryTable'
+import AdminAuthModal from './AdminAuthModal'
+import ReceiptSettingsControl from './ReceiptSettingsControl' 
 
 interface OrderSummary {
   id: number
@@ -17,6 +20,12 @@ interface OrderSummary {
 }
 
 export default function AdminDashboard() {
+  const router = useRouter()
+
+  // 🔐 Authentication States
+  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [showAuthModal, setShowAuthModal] = useState(true)
+
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [orders, setOrders] = useState<OrderSummary[]>([])
@@ -28,19 +37,43 @@ export default function AdminDashboard() {
   const [barcode, setBarcode] = useState('')
   const [price, setPrice] = useState('')
   const [costPrice, setCostPrice] = useState('')
+  const [discount, setDiscount] = useState('') // 🏷️ Discount Percentage State
   const [stock, setStock] = useState('')
+  const [unitType, setUnitType] = useState<'unit' | 'kg' | 'g'>('unit') // ⚖️ Supports 'unit', 'kg', and 'g'
   const [categoryId, setCategoryId] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
 
+  // 🔐 Check Session Storage on Mount
   useEffect(() => {
-    fetchAdminData()
+    const authStatus = sessionStorage.getItem('isAdminAuthenticated')
+    if (authStatus === 'true') {
+      setIsAuthenticated(true)
+      setShowAuthModal(false)
+      fetchAdminData()
+    }
   }, [])
+
+  const handleAuthSuccess = () => {
+    setIsAuthenticated(true)
+    setShowAuthModal(false)
+    sessionStorage.setItem('isAdminAuthenticated', 'true')
+    fetchAdminData()
+  }
+
+  const handleAuthCancel = () => {
+    router.push('/') // Main Terminal එකට රීඩිරෙක්ට් කිරීම
+  }
 
   const fetchAdminData = async () => {
     setLoading(true)
-    const { data: prodData } = await supabase.from('products').select('*').order('id', { ascending: true })
+    const { data: prodData } = await supabase
+      .from('products')
+      .select('*')
+      .order('id', { ascending: true })
+
     const { data: catData } = await supabase.from('categories').select('*')
+
     const { data: orderData } = await supabase
       .from('orders')
       .select('id, total_amount, created_at')
@@ -58,12 +91,14 @@ export default function AdminDashboard() {
     setBarcode(product.barcode || '')
     setPrice(product.price.toString())
     setCostPrice(product.cost_price ? product.cost_price.toString() : '')
+    setDiscount(product.discount_percentage ? product.discount_percentage.toString() : '') // Load discount %
     setStock(product.stock_quantity.toString())
+    setUnitType((product.unit_type as 'unit' | 'kg' | 'g') || 'unit') // Safely set unit_type
     setCategoryId(product.category_id ? product.category_id.toString() : '')
     setImageUrl(product.image_url || '')
   }
 
-  // 🗑️ NEW: Product Delete Handler
+  // 🗑️ Product Delete Handler
   const handleDeleteProduct = async (productId: number, productName: string) => {
     const confirmDelete = window.confirm(`Are you sure you want to delete "${productName}"?`)
     if (!confirmDelete) return
@@ -77,7 +112,6 @@ export default function AdminDashboard() {
       if (error) throw error
 
       alert('Product deleted successfully! 🗑️')
-      // List එකෙන් Delete වූ product එක ඉවත් කර state එක instant update කිරීම
       setProducts((prev) => prev.filter((p) => p.id !== productId))
     } catch (err: any) {
       alert('Failed to delete product: ' + err.message)
@@ -90,7 +124,9 @@ export default function AdminDashboard() {
     setBarcode('')
     setPrice('')
     setCostPrice('')
+    setDiscount('') // Reset discount state
     setStock('')
+    setUnitType('unit') // Reset unitType state
     setCategoryId('')
     setImageUrl('')
   }
@@ -115,39 +151,52 @@ export default function AdminDashboard() {
       barcode: barcode || null,
       price: parseFloat(price),
       cost_price: costPrice ? parseFloat(costPrice) : null,
-      stock_quantity: parseInt(stock),
+      discount_percentage: discount ? parseFloat(discount) : 0, // Save discount %
+      stock_quantity: parseFloat(stock), // Supports decimals for Kg/g stock
+      unit_type: unitType, // Save unit_type
       category_id: categoryId ? parseInt(categoryId) : null,
       image_url: imageUrl || null,
     }
 
-    if (editingProductId) {
-      const { error } = await supabase
-        .from('products')
-        .update(payload)
-        .eq('id', editingProductId)
+    try {
+      if (editingProductId) {
+        const { error } = await supabase
+          .from('products')
+          .update(payload)
+          .eq('id', editingProductId)
 
-      if (error) {
-        alert('Error updating product: ' + error.message)
-      } else {
+        if (error) throw error
         alert('Product Updated Successfully! ✏️')
-        resetForm()
-        fetchAdminData()
-      }
-    } else {
-      const { error } = await supabase.from('products').insert([payload])
-
-      if (error) {
-        alert('Error adding product: ' + error.message)
       } else {
-        alert('Product Added Successfully! 🎉')
-        resetForm()
-        fetchAdminData()
-      }
-    }
+        const { error } = await supabase.from('products').insert([payload])
 
-    setSubmitting(false)
+        if (error) throw error
+        alert('Product Added Successfully! 🎉')
+      }
+
+      resetForm()
+      fetchAdminData()
+    } catch (err: any) {
+      alert('Error saving product: ' + err.message)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
+  // 🔐 Auth වී නැත්නම් Modal එක විතරක් Render කිරීම
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <AdminAuthModal
+          isOpen={showAuthModal}
+          onSuccess={handleAuthSuccess}
+          onCancel={handleAuthCancel}
+        />
+      </div>
+    )
+  }
+
+  // 🔐 Auth වුණාට පසු පෙන්වන Dashboard View
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
       {/* Header */}
@@ -176,34 +225,47 @@ export default function AdminDashboard() {
 
       {/* Form & Inventory Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <ProductForm
-          editingProductId={editingProductId}
-          categories={categories}
-          name={name}
-          setName={setName}
-          barcode={barcode}
-          setBarcode={setBarcode}
-          price={price}
-          setPrice={setPrice}
-          costPrice={costPrice}
-          setCostPrice={setCostPrice}
-          stock={stock}
-          setStock={setStock}
-          categoryId={categoryId}
-          setCategoryId={setCategoryId}
-          imageUrl={imageUrl}
-          setImageUrl={setImageUrl}
-          submitting={submitting}
-          handleSubmitProduct={handleSubmitProduct}
-          resetForm={resetForm}
-        />
+        {/* Column 1: Product Add / Edit Form */}
+        <div className="space-y-8">
+          <ProductForm
+            editingProductId={editingProductId}
+            categories={categories}
+            name={name}
+            setName={setName}
+            barcode={barcode}
+            setBarcode={setBarcode}
+            price={price}
+            setPrice={setPrice}
+            costPrice={costPrice}
+            setCostPrice={setCostPrice}
+            discount={discount}
+            setDiscount={setDiscount}
+            stock={stock}
+            setStock={setStock}
+            unitType={unitType}
+            setUnitType={setUnitType}
+            categoryId={categoryId}
+            setCategoryId={setCategoryId}
+            imageUrl={imageUrl}
+            setImageUrl={setImageUrl}
+            submitting={submitting}
+            handleSubmitProduct={handleSubmitProduct}
+            resetForm={resetForm}
+          />
 
-        {/* 🗑️ Here we pass handleOnDeleteClick to InventoryTable */}
-        <InventoryTable
-          products={products}
-          handleEditClick={handleEditClick}
-          onDeleteClick={handleDeleteProduct}
-        />
+          {/* 🧾 Receipt Customizer Panel */}
+          <ReceiptSettingsControl />
+        </div>
+
+        {/* Column 2 & 3: Inventory Table */}
+        <div className="lg:col-span-2">
+          <InventoryTable
+            products={products}
+            handleEditClick={handleEditClick}
+            onDeleteClick={handleDeleteProduct}
+            onStockUpdated={fetchAdminData}
+          />
+        </div>
       </div>
     </div>
   )

@@ -1,7 +1,7 @@
 'use client'
 
-import React from 'react'
-import { CartItem } from '@/types'
+import React, { useState, useEffect } from 'react'
+import { CartItem, ReceiptSettings } from '@/types'
 import { Printer, X, CheckCircle2 } from 'lucide-react'
 
 interface ReceiptModalProps {
@@ -12,6 +12,17 @@ interface ReceiptModalProps {
   totalAmount: number
   paidAmount: number
   changeAmount: number
+  settings?: ReceiptSettings // Optional Direct Props
+}
+
+// ⚙️ Default Fallback Settings
+const defaultSettings: ReceiptSettings = {
+  storeName: 'SMART POS STORE',
+  storeAddress: 'No. 123, Main Street, Colombo',
+  storePhone: '+94 77 123 4567',
+  showOriginalPrice: true,
+  showSavingsBanner: true,
+  footerMessage: 'Thank You For Shopping With Us! Please Come Again.',
 }
 
 export default function ReceiptModal({
@@ -22,7 +33,30 @@ export default function ReceiptModal({
   totalAmount,
   paidAmount,
   changeAmount,
+  settings,
 }: ReceiptModalProps) {
+  const [liveSettings, setLiveSettings] = useState<ReceiptSettings>(defaultSettings)
+
+  // 🔄 LocalStorage එකෙන් Admin Settings Auto-Sync කරගැනීම
+  useEffect(() => {
+    const loadSavedSettings = () => {
+      const saved = localStorage.getItem('pos_receipt_settings')
+      if (saved) {
+        try {
+          setLiveSettings(JSON.parse(saved))
+        } catch (e) {
+          console.error('Failed to parse receipt settings:', e)
+        }
+      }
+    }
+
+    loadSavedSettings()
+
+    // Storage වෙනස්වීම් Real-time අල්ලා ගැනීමට
+    window.addEventListener('storage', loadSavedSettings)
+    return () => window.removeEventListener('storage', loadSavedSettings)
+  }, [])
+
   if (!isOpen) return null
 
   const handlePrint = () => {
@@ -30,6 +64,22 @@ export default function ReceiptModal({
   }
 
   const currentDate = new Date().toLocaleString()
+  
+  // Props හරහා එන settings වලට හෝ Saved settings වලට මුල් තැන දීම
+  const activeSettings = { ...defaultSettings, ...liveSettings, ...settings }
+
+  // 🧮 Discount & Savings Calculations
+  const totalSavings = cartItems.reduce((acc, item) => {
+    const discountPercent = item.product.discount_percentage || 0
+    if (discountPercent > 0) {
+      const savingPerItem = item.product.price * (discountPercent / 100)
+      return acc + savingPerItem * item.quantity
+    }
+    return acc
+  }, 0)
+
+  // Subtotal calculation (මුළු වටිනාකම)
+  const subTotal = totalAmount + totalSavings
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
@@ -52,57 +102,113 @@ export default function ReceiptModal({
         {/* 🖨️ PRINTABLE RECEIPT CONTAINER */}
         <div id="printable-receipt" className="bg-white text-black p-6 rounded-lg font-mono text-xs space-y-4">
           
-          {/* Shop Header */}
+          {/* 🏪 Shop Header */}
           <div className="text-center border-b border-dashed border-gray-400 pb-3">
-            <h2 className="text-base font-bold uppercase tracking-wider">SMART POS STORE</h2>
-            <p className="text-[10px] text-gray-600">No. 123, Main Street, Colombo</p>
-            <p className="text-[10px] text-gray-600">Tel: +94 77 123 4567</p>
+            <h2 className="text-base font-bold uppercase tracking-wider">{activeSettings.storeName}</h2>
+            {activeSettings.storeAddress && <p className="text-[10px] text-gray-600">{activeSettings.storeAddress}</p>}
+            {activeSettings.storePhone && <p className="text-[10px] text-gray-600">Tel: {activeSettings.storePhone}</p>}
           </div>
 
-          {/* Meta Info */}
-          <div className="flex justify-between text-[11px]">
+          {/* 📅 Meta Info */}
+          <div className="flex justify-between text-[11px] text-gray-700">
             <span>Order #: {orderId || 'N/A'}</span>
             <span>{currentDate}</span>
           </div>
 
-          {/* Items Table */}
+          {/* 🛒 Items Table */}
           <div className="border-t border-b border-dashed border-gray-400 py-2">
-            <div className="grid grid-cols-12 font-bold mb-1 border-b border-gray-200 pb-1">
+            <div className="grid grid-cols-12 font-bold mb-2 border-b border-gray-200 pb-1 text-gray-700 text-[11px]">
               <span className="col-span-6">ITEM</span>
-              <span className="col-span-2 text-center">QTY</span>
-              <span className="col-span-4 text-right">PRICE</span>
+              <span className="col-span-3 text-center">QTY / WEIGHT</span>
+              <span className="col-span-3 text-right">PRICE</span>
             </div>
-            {cartItems.map((item) => (
-              <div key={item.product.id} className="grid grid-cols-12 my-1">
-                <span className="col-span-6 truncate font-sans">{item.product.name}</span>
-                <span className="col-span-2 text-center">x{item.quantity}</span>
-                <span className="col-span-4 text-right">
-                  {(item.product.price * item.quantity).toFixed(2)}
-                </span>
-              </div>
-            ))}
+            
+            {cartItems.map((item) => {
+              const p = item.product
+              const isKg = p.unit_type === 'kg'
+              const discountPercent = p.discount_percentage || 0
+              const originalPrice = p.price
+              const finalUnitPrice = discountPercent > 0 
+                ? originalPrice - (originalPrice * discountPercent / 100) 
+                : originalPrice
+              const lineTotal = finalUnitPrice * item.quantity
+
+              // Weight / Quantity Display (e.g., 250g, 1.5Kg, or x2)
+              const formattedQty = isKg
+                ? item.quantity < 1
+                  ? `${Math.round(item.quantity * 1000)}g`
+                  : `${item.quantity}Kg`
+                : `x${item.quantity}`
+
+              return (
+                <div key={p.id} className="grid grid-cols-12 my-2 items-start">
+                  <div className="col-span-6 pr-1">
+                    <div className="font-sans font-semibold text-gray-900 leading-tight">
+                      {p.name}
+                    </div>
+                    {/* Unit price indicator */}
+                    <div className="text-[9px] text-gray-500">
+                      @{finalUnitPrice.toFixed(2)}{isKg ? '/Kg' : ''}
+                    </div>
+                    {/* Admin Settings වල showOriginalPrice ON කර ඇත්නම් පමණක් Regular Price පෙන්වයි */}
+                    {activeSettings.showOriginalPrice && discountPercent > 0 && (
+                      <div className="text-[9px] text-gray-400 line-through">
+                        Reg: LKR {originalPrice.toFixed(2)} (-{discountPercent}%)
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-span-3 text-center text-gray-800 font-medium pt-0.5">
+                    {formattedQty}
+                  </div>
+                  <div className="col-span-3 text-right font-bold text-gray-900 pt-0.5">
+                    {lineTotal.toFixed(2)}
+                  </div>
+                </div>
+              )
+            })}
           </div>
 
-          {/* Totals */}
+          {/* 💰 Totals */}
           <div className="space-y-1 text-[11px] pt-1">
-            <div className="flex justify-between font-bold text-sm">
-              <span>TOTAL:</span>
+            {activeSettings.showOriginalPrice && totalSavings > 0 && (
+              <div className="flex justify-between text-gray-500">
+                <span>SUBTOTAL:</span>
+                <span className="line-through">LKR {subTotal.toFixed(2)}</span>
+              </div>
+            )}
+            
+            {totalSavings > 0 && (
+              <div className="flex justify-between text-green-700 font-bold">
+                <span>DISCOUNT:</span>
+                <span>- LKR {totalSavings.toFixed(2)}</span>
+              </div>
+            )}
+
+            <div className="flex justify-between font-black text-sm text-black pt-1 border-t border-gray-300 mt-1">
+              <span>FINAL TOTAL:</span>
               <span>LKR {totalAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
+            
+            <div className="flex justify-between text-gray-700 pt-2">
               <span>CASH PAID:</span>
               <span>LKR {paidAmount.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between">
+            <div className="flex justify-between font-bold text-gray-900">
               <span>BALANCE:</span>
               <span>LKR {changeAmount.toFixed(2)}</span>
             </div>
           </div>
 
-          {/* Footer Note */}
-          <div className="text-center border-t border-dashed border-gray-400 pt-3 text-[10px] text-gray-500">
-            <p>Thank You For Shopping With Us!</p>
-            <p>Please Come Again</p>
+          {/* 🎉 Customer Satisfaction Banner */}
+          {activeSettings.showSavingsBanner && totalSavings > 0 && (
+            <div className="text-center bg-gray-100 py-2 my-2 rounded text-[10px] font-black text-green-800 border border-green-300 tracking-tight shadow-sm">
+              🎉 YOU SAVED LKR {totalSavings.toFixed(2)} TODAY!
+            </div>
+          )}
+
+          {/* 💬 Footer Note */}
+          <div className="text-center border-t border-dashed border-gray-400 pt-3 text-[10px] text-gray-600 font-medium">
+            <p>{activeSettings.footerMessage}</p>
           </div>
         </div>
 
@@ -110,13 +216,13 @@ export default function ReceiptModal({
         <div className="mt-6 flex gap-3 print:hidden">
           <button
             onClick={handlePrint}
-            className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition"
+            className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg shadow-sky-500/20"
           >
             <Printer className="w-5 h-5" /> Print Receipt
           </button>
           <button
             onClick={onClose}
-            className="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-4 py-3 rounded-xl transition"
+            className="bg-slate-800 hover:bg-slate-700 text-white font-semibold px-6 py-3 rounded-xl transition"
           >
             Close
           </button>
@@ -124,7 +230,7 @@ export default function ReceiptModal({
 
       </div>
 
-      {/* Global CSS for Clean Printing (Only prints the receipt) */}
+      {/* 🖨️ Global CSS for Clean Printing */}
       <style jsx global>{`
         @media print {
           body * {
@@ -139,8 +245,9 @@ export default function ReceiptModal({
             top: 0;
             width: 100%;
             margin: 0;
-            padding: 15px;
+            padding: 10px;
             box-shadow: none;
+            background: white;
           }
         }
       `}</style>
