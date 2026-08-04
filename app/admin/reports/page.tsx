@@ -3,9 +3,10 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { ShoppingBag, DollarSign, Calendar, RefreshCw, Printer } from 'lucide-react'
+import { ShoppingBag, DollarSign, Calendar, RefreshCw, Printer, FileDown } from 'lucide-react'
 import ReceiptModal from '@/components/ReceiptModal'
 import AdminAuthModal from '../AdminAuthModal'
+import SalesReportModal from './SalesReportModal'
 
 interface OrderItem {
   id: number
@@ -38,6 +39,9 @@ export default function ReportsPage() {
   // Selected Order for Re-printing Receipt
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
+
+  // 📊 State for Sales Report Export Modal
+  const [isReportModalOpen, setIsReportModalOpen] = useState(false)
 
   // 🔐 2. Check Session Storage on Mount
   useEffect(() => {
@@ -121,13 +125,25 @@ export default function ReportsPage() {
           <h1 className="text-2xl font-bold text-white">Sales Reports & Analytics</h1>
           <p className="text-slate-400 text-sm mt-1">Track daily sales performance and order history</p>
         </div>
-        <button
-          onClick={fetchOrders}
-          className="bg-slate-900 hover:bg-slate-800 border border-slate-800 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          Refresh Data
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* 📊 Export Excel/PDF Reports Button */}
+          <button
+            onClick={() => setIsReportModalOpen(true)}
+            className="bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 border border-sky-500/30 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition shadow-lg shadow-sky-500/5"
+          >
+            <FileDown className="w-4 h-4" /> Export Reports
+          </button>
+
+          {/* Refresh Data Button */}
+          <button
+            onClick={fetchOrders}
+            className="bg-slate-900 hover:bg-slate-800 border border-slate-800 px-4 py-2 rounded-xl text-sm font-semibold flex items-center gap-2 transition text-slate-300 hover:text-white"
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh Data
+          </button>
+        </div>
       </div>
 
       {/* Summary Cards */}
@@ -245,6 +261,12 @@ export default function ReportsPage() {
           changeAmount={0}
         />
       )}
+
+      {/* 📊 Sales Export Modal */}
+      <SalesReportModal
+        isOpen={isReportModalOpen}
+        onClose={() => setIsReportModalOpen(false)}
+      />
     </div>
   )
 }
