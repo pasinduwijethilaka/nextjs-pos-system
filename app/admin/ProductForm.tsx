@@ -2,7 +2,7 @@
 
 import React from 'react'
 import { Category } from '@/types'
-import { PlusCircle, Save, RefreshCw, Scale } from 'lucide-react'
+import { PlusCircle, Save, RefreshCw, Scale, Barcode } from 'lucide-react'
 
 interface ProductFormProps {
   editingProductId: number | null
@@ -166,13 +166,17 @@ export default function ProductForm({
         {/* Barcode & Category Row */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Barcode</label>
+            <label className="block text-xs font-semibold text-sky-400 mb-1 flex items-center gap-1">
+              <Barcode className="w-3.5 h-3.5" /> Barcode
+            </label>
             <input
               type="text"
+              id="barcode"
+              name="barcode"
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Scan or enter"
-              className="w-full bg-slate-950 border border-slate-800 text-sm text-white rounded-xl p-3 outline-none focus:border-sky-500 font-mono"
+              placeholder="Ready to scan..."
+              className="w-full bg-slate-950 border border-sky-500/30 text-sm text-sky-300 rounded-xl p-3 outline-none focus:border-sky-500 font-mono"
             />
           </div>
 

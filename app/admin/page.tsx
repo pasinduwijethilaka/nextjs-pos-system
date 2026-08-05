@@ -54,6 +54,59 @@ export default function AdminDashboard() {
     }
   }, [])
 
+  // 🔍 Hardware Barcode Scanner Listener
+  useEffect(() => {
+    // Auth වී නැතිනම් Scanner එක active කිරීම අවශ්‍ය නැත
+    if (!isAuthenticated) return
+
+    let barcodeBuffer = ''
+    let timeoutId: NodeJS.Timeout
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement
+      
+      // වෙනත් input හෝ textarea එකක type කරද්දී, එය "barcode" input එක නොවේ නම් scanner එක මඟින් එය override කිරීම වළක්වයි
+      if (
+        target.tagName === 'INPUT' || 
+        target.tagName === 'TEXTAREA'
+      ) {
+        // Form එකේ barcode field එක ඇතුළේ කෙලින්ම type කරනවා නම් සාමාන්‍ය පරිදි type වෙන්න දෙන්න
+        if (target.getAttribute('name') === 'barcode' || target.getAttribute('id') === 'barcode') {
+          return
+        }
+        // වෙනත් field එකක (උදා: Product Name, Price) type කරන විට global scanner listener එක නතර කරන්න
+        return
+      }
+
+      // Scanner එකකින් Scan කර අවසන් වූ පසු සාමාන්‍යයෙන් Enter Key එකක් එයි
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.trim().length > 0) {
+          e.preventDefault()
+          setBarcode(barcodeBuffer.trim()) // Barcode state එකට අගය එකතු කිරීම
+          barcodeBuffer = ''
+        }
+        return
+      }
+
+      // Scanner එකෙන් එන Characters එකින් එක Buffer එකට එකතු කිරීම
+      if (e.key.length === 1) {
+        barcodeBuffer += e.key
+
+        // Hardware scanner එකක් ඉතා වේගයෙන් type කරයි (~10-50ms). 
+        // මිනිසෙකු ටයිප් කරනවාට වඩා වේගවත් බැවින් තත්පර 0.1කින් buffer එක auto clear වේ.
+        clearTimeout(timeoutId)
+        timeoutId = setTimeout(() => {
+          barcodeBuffer = ''
+        }, 100)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [isAuthenticated])
+
   const handleAuthSuccess = () => {
     setIsAuthenticated(true)
     setShowAuthModal(false)

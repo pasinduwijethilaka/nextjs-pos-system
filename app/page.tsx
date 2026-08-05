@@ -9,7 +9,6 @@ import CategoryFilter from '@/components/CategoryFilter'
 import ProductGrid from '@/components/ProductGrid'
 import CartSidebar from '@/components/CartSidebar'
 
-// 🎯 Supabase products table එකේ Custom Product එකේ ID එක (8)
 const DUMMY_PRODUCT_ID = 8
 
 export const getEffectivePrice = (product: Product): number => {
@@ -33,6 +32,52 @@ export default function POSTerminal() {
     fetchData()
   }, [])
 
+  // 🔍 Hardware Barcode Scanner Listener
+  useEffect(() => {
+    let barcodeBuffer = ''
+    let timeoutId: NodeJS.Timeout
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // User Search bar එකේ type කරද්දී ගෝලීය barcode scan නොවීමට
+      const target = e.target as HTMLElement
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+        return
+      }
+
+      if (e.key === 'Enter') {
+        if (barcodeBuffer.trim().length > 0) {
+          handleBarcodeScan(barcodeBuffer.trim())
+          barcodeBuffer = ''
+        }
+        return
+      }
+
+      if (e.key.length === 1) {
+        barcodeBuffer += e.key
+
+        clearTimeout(timeoutId)
+        timeoutId = setTimeout(() => {
+          barcodeBuffer = ''
+        }, 100)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [products])
+
+  const handleBarcodeScan = (scannedBarcode: string) => {
+    const foundProduct = products.find((p) => p.barcode === scannedBarcode)
+
+    if (foundProduct) {
+      addToCart(foundProduct, 1)
+    } else {
+      alert(`Barcode "${scannedBarcode}" හිමි Product එකක් හමු නොවුණි!`)
+    }
+  }
+
   const fetchData = async () => {
     setLoading(true)
     const { data: catData } = await supabase.from('categories').select('*')
@@ -42,7 +87,6 @@ export default function POSTerminal() {
       .order('id', { ascending: true })
 
     if (catData) setCategories(catData)
-    // Terminal UI එකේ Dummy custom item (ID: 8) එක පෙන්නන්න ඕන නැති නිසා Filter කරමු
     if (prodData) setProducts(prodData.filter((p) => p.id !== DUMMY_PRODUCT_ID))
     setLoading(false)
   }
@@ -76,12 +120,11 @@ export default function POSTerminal() {
     })
   }
 
-  // ➕ Custom Items වලට Real DB Dummy ID (8) එක යෙදීම
   const handleAddCustomToCart = ({ name, price, quantity }: { name: string; price: number; quantity: number }) => {
     const tempCartId = -Math.floor(100000 + Math.random() * 900000)
 
     const customProduct: Product = {
-      id: DUMMY_PRODUCT_ID, // ID එක 8 ලෙස සෙට් වේ
+      id: DUMMY_PRODUCT_ID,
       name: name,
       price: price,
       cost_price: 0,
@@ -127,19 +170,16 @@ export default function POSTerminal() {
     setCart([])
   }
 
-  // 💳 Direct Foreign-Key Safe Checkout
   const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
     if (cart.length === 0) return alert('Cart is empty!')
     setProcessing(true)
 
     try {
-      // 1. Calculate Total Amount
       const totalAmount = cart.reduce(
         (sum, item) => sum + getEffectivePrice(item.product) * item.quantity,
         0
       )
 
-      // 2. Insert Orders Table
       const { data: order, error: orderErr } = await supabase
         .from('orders')
         .insert([{ total_amount: totalAmount, payment_method: paymentMethod }])
@@ -150,22 +190,19 @@ export default function POSTerminal() {
         throw new Error(`Order save error: ${orderErr?.message}`)
       }
 
-      // 3. Prepare Order Items Data
       const orderItemsData = cart.map((item) => ({
         order_id: order.id,
-        product_id: item.product.id, // ID 8 හෝ Normal Product ID එක Database එකට යයි
+        product_id: item.product.id,
         quantity: item.quantity,
         unit_price: getEffectivePrice(item.product),
       }))
 
-      // 4. Insert Order Items Table
       const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsData)
 
       if (itemsErr) {
         throw new Error(`Order items error: ${itemsErr.message}`)
       }
 
-      // 5. Update Stock (Normal Products සඳහා පමණි)
       for (const item of cart) {
         if (item.product.id === DUMMY_PRODUCT_ID || item.product.is_custom) continue
 
