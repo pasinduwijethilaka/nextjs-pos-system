@@ -9,7 +9,9 @@ import CategoryFilter from '@/components/CategoryFilter'
 import ProductGrid from '@/components/ProductGrid'
 import CartSidebar from '@/components/CartSidebar'
 
-// 🏷️ Helper to calculate effective price after item discount
+// 🎯 Supabase products table එකේ Custom Product එකේ ID එක (8)
+const DUMMY_PRODUCT_ID = 8
+
 export const getEffectivePrice = (product: Product): number => {
   if (product.discount_percentage && product.discount_percentage > 0) {
     const discountAmount = (product.price * product.discount_percentage) / 100
@@ -40,7 +42,8 @@ export default function POSTerminal() {
       .order('id', { ascending: true })
 
     if (catData) setCategories(catData)
-    if (prodData) setProducts(prodData)
+    // Terminal UI එකේ Dummy custom item (ID: 8) එක පෙන්නන්න ඕන නැති නිසා Filter කරමු
+    if (prodData) setProducts(prodData.filter((p) => p.id !== DUMMY_PRODUCT_ID))
     setLoading(false)
   }
 
@@ -52,7 +55,6 @@ export default function POSTerminal() {
     return matchesCategory && matchesSearch
   })
 
-  // 🛒 Cart එකට Add කරද්දී Stock Limit Check කිරීම (Supports initial weight as well)
   const addToCart = (product: Product, initialQty: number = 1) => {
     if (product.stock_quantity <= 0) {
       return alert('Out of stock! මේ Item එකේ Stock ඉවරයි.')
@@ -74,7 +76,26 @@ export default function POSTerminal() {
     })
   }
 
-  // ➕/➖ Quantity හෝ Exact Weight වෙනස් කරද්දී Stock Check කිරීම
+  // ➕ Custom Items වලට Real DB Dummy ID (8) එක යෙදීම
+  const handleAddCustomToCart = ({ name, price, quantity }: { name: string; price: number; quantity: number }) => {
+    const tempCartId = -Math.floor(100000 + Math.random() * 900000)
+
+    const customProduct: Product = {
+      id: DUMMY_PRODUCT_ID, // ID එක 8 ලෙස සෙට් වේ
+      name: name,
+      price: price,
+      cost_price: 0,
+      category_id: categories[0]?.id || 1,
+      stock_quantity: 999999,
+      barcode: `CUSTOM-${Math.abs(tempCartId)}`,
+      unit_type: 'unit',
+      is_custom: true,
+      image_url: ''
+    }
+
+    setCart((prev) => [...prev, { product: customProduct, quantity }])
+  }
+
   const updateQuantity = (productId: number, newQtyOrDelta: number, isDirectValue: boolean = false) => {
     setCart((prev) =>
       prev
@@ -106,73 +127,61 @@ export default function POSTerminal() {
     setCart([])
   }
 
-  // 💳 Checkout Logic (Order + Items + Stock Deduct)
+  // 💳 Direct Foreign-Key Safe Checkout
   const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
     if (cart.length === 0) return alert('Cart is empty!')
     setProcessing(true)
 
     try {
-      // 1. Double Check Stock directly from DB before order placement
-      for (const item of cart) {
-        const { data: latestProd } = await supabase
-          .from('products')
-          .select('stock_quantity, name, unit_type')
-          .eq('id', item.product.id)
-          .single()
-
-        if (!latestProd || latestProd.stock_quantity < item.quantity) {
-          const unitLabel = latestProd?.unit_type === 'kg' ? 'Kg' : ''
-          throw new Error(
-            `Not enough stock for "${item.product.name}". Only ${
-              latestProd ? latestProd.stock_quantity : 0
-            } ${unitLabel} left!`
-          )
-        }
-      }
-
-      // 🏷️ Calculate Total with Discounted Prices
+      // 1. Calculate Total Amount
       const totalAmount = cart.reduce(
         (sum, item) => sum + getEffectivePrice(item.product) * item.quantity,
         0
       )
 
-      // 2. Insert Order
+      // 2. Insert Orders Table
       const { data: order, error: orderErr } = await supabase
         .from('orders')
         .insert([{ total_amount: totalAmount, payment_method: paymentMethod }])
-        .select()
+        .select('id')
         .single()
 
-      if (orderErr) throw orderErr
+      if (orderErr || !order) {
+        throw new Error(`Order save error: ${orderErr?.message}`)
+      }
 
-      // 3. Insert Order Items (with discounted unit price)
-      const orderItems = cart.map((item) => ({
+      // 3. Prepare Order Items Data
+      const orderItemsData = cart.map((item) => ({
         order_id: order.id,
-        product_id: item.product.id,
+        product_id: item.product.id, // ID 8 හෝ Normal Product ID එක Database එකට යයි
         quantity: item.quantity,
         unit_price: getEffectivePrice(item.product),
       }))
 
-      const { error: itemsErr } = await supabase.from('order_items').insert(orderItems)
-      if (itemsErr) throw itemsErr
+      // 4. Insert Order Items Table
+      const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsData)
 
-      // 4. Update/Deduct Product Stock in DB safely
+      if (itemsErr) {
+        throw new Error(`Order items error: ${itemsErr.message}`)
+      }
+
+      // 5. Update Stock (Normal Products සඳහා පමණි)
       for (const item of cart) {
+        if (item.product.id === DUMMY_PRODUCT_ID || item.product.is_custom) continue
+
         const newStock = Math.max(0, Number((item.product.stock_quantity - item.quantity).toFixed(3)))
 
-        const { error: stockErr } = await supabase
+        await supabase
           .from('products')
           .update({ stock_quantity: newStock })
           .eq('id', item.product.id)
-
-        if (stockErr) throw stockErr
       }
 
       alert('Sale Completed Successfully! 🎉')
       setCart([])
-      fetchData() // Refresh products grid to show updated stock values
+      fetchData()
     } catch (err: any) {
-      alert('Checkout failed: ' + err.message)
+      alert('Checkout Failed: ' + err.message)
     } finally {
       setProcessing(false)
     }
@@ -180,7 +189,6 @@ export default function POSTerminal() {
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 font-sans overflow-hidden">
-      {/* 🛍️ LEFT SECTION */}
       <div className="flex-1 flex flex-col p-6 overflow-hidden">
         <Header searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
         <CategoryFilter
@@ -195,12 +203,12 @@ export default function POSTerminal() {
         />
       </div>
 
-      {/* 🧾 RIGHT SECTION */}
       <CartSidebar
         cart={cart}
         onUpdateQuantity={updateQuantity}
         removeFromCart={removeFromCart}
         onClearCart={handleClearCart}
+        onAddCustomToCart={handleAddCustomToCart}
         handleCheckout={handleCheckout}
         processing={processing}
       />

@@ -3,7 +3,19 @@
 import React, { useState, useEffect } from 'react'
 import { CartItem, Product } from '@/types'
 import { supabase } from '@/lib/supabase'
-import { ShoppingCart, Trash2, Plus, Minus, CreditCard, Scale, AlertCircle } from 'lucide-react'
+import {
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
+  CreditCard,
+  Scale,
+  AlertCircle,
+  PlusCircle,
+  X,
+  Tag,
+  DollarSign,
+} from 'lucide-react'
 import ReceiptModal from '@/components/ReceiptModal'
 
 interface CartSidebarProps {
@@ -11,7 +23,8 @@ interface CartSidebarProps {
   onUpdateQuantity: (productId: number, deltaOrValue: number, isDirectValue?: boolean) => void
   removeFromCart: (productId: number) => void
   onClearCart: () => void
-  handleCheckout?: (paymentMethod: "cash" | "card") => Promise<void>
+  onAddCustomToCart?: (item: { name: string; price: number; quantity: number }) => void
+  handleCheckout?: (paymentMethod: 'cash' | 'card') => Promise<void>
   processing?: boolean
 }
 
@@ -24,7 +37,7 @@ const getEffectivePrice = (product: Product): number => {
   return product.price
 }
 
-// 🔢 Separate Sub-component for Safe Quantity Input
+// 🔢 Sub-component for Safe Quantity Input
 function QuantityInput({
   item,
   onUpdateQuantity,
@@ -60,7 +73,7 @@ function QuantityInput({
   return (
     <input
       type="number"
-      step={isKg ? "0.001" : "1"}
+      step={isKg ? '0.001' : '1'}
       min="0.001"
       value={val}
       onChange={handleChange}
@@ -70,15 +83,154 @@ function QuantityInput({
   )
 }
 
+// ➕ Sub-component: Custom Item Addition Modal
+function CustomItemModal({
+  isOpen,
+  onClose,
+  onAddItem,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onAddItem: (item: { name: string; price: number; quantity: number }) => void
+}) {
+  const [name, setName] = useState('')
+  const [price, setPrice] = useState('')
+  const [quantity, setQuantity] = useState('1')
+
+  if (!isOpen) return null
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const parsedPrice = parseFloat(price)
+    const parsedQty = parseFloat(quantity)
+
+    if (!name.trim()) {
+      alert('Please enter an item name')
+      return
+    }
+    if (isNaN(parsedPrice) || parsedPrice <= 0) {
+      alert('Please enter a valid price')
+      return
+    }
+    if (isNaN(parsedQty) || parsedQty <= 0) {
+      alert('Please enter a valid quantity')
+      return
+    }
+
+    onAddItem({
+      name: name.trim(),
+      price: parsedPrice,
+      quantity: parsedQty,
+    })
+
+    // Reset & Close Modal
+    setName('')
+    setPrice('')
+    setQuantity('1')
+    onClose()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-slate-100 relative shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
+          <h3 className="font-bold text-white text-base flex items-center gap-2">
+            <PlusCircle className="w-5 h-5 text-sky-400" /> Add Custom Item
+          </h3>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Input Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
+              Item Name / Description
+            </label>
+            <div className="relative">
+              <Tag className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+              <input
+                type="text"
+                placeholder="e.g. Miscellaneous Item"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
+                autoFocus
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
+                Price (LKR)
+              </label>
+              <div className="relative">
+                <DollarSign className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
+                Quantity
+              </label>
+              <input
+                type="number"
+                step="any"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 px-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
+              />
+            </div>
+          </div>
+
+          <div className="pt-2 flex gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-2.5 rounded-xl text-sm transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold py-2.5 rounded-xl text-sm transition shadow-lg shadow-sky-500/20"
+            >
+              Add to Cart
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 export default function CartSidebar({
   cart,
   onUpdateQuantity,
   removeFromCart,
   onClearCart,
+  onAddCustomToCart,
   processing = false,
 }: CartSidebarProps) {
   const [cashGiven, setCashGiven] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [isCustomModalOpen, setIsCustomModalOpen] = useState(false)
 
   // Receipt Modal States
   const [isReceiptOpen, setIsReceiptOpen] = useState(false)
@@ -147,23 +299,36 @@ export default function CartSidebar({
   return (
     <>
       <div className="w-full lg:w-96 bg-slate-900 border-l border-slate-800 flex flex-col h-full p-6">
+        {/* Header Section */}
         <div className="flex items-center justify-between pb-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-sky-400" />
             <h2 className="text-lg font-bold text-white">Current Order</h2>
           </div>
-          {cart.length > 0 && (
+
+          <div className="flex items-center gap-2">
+            {/* ➕ Custom Item Add Button */}
             <button
               type="button"
-              onClick={() => {
-                onClearCart()
-                setCashGiven('')
-              }}
-              className="text-xs text-red-400 hover:text-red-300 hover:underline flex items-center gap-1 font-semibold"
+              onClick={() => setIsCustomModalOpen(true)}
+              className="text-xs bg-slate-800 hover:bg-slate-700 text-sky-400 border border-sky-500/20 px-2.5 py-1 rounded-lg font-semibold flex items-center gap-1 transition"
             >
-              Clear Cart
+              <PlusCircle className="w-3.5 h-3.5" /> + Custom
             </button>
-          )}
+
+            {cart.length > 0 && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClearCart()
+                  setCashGiven('')
+                }}
+                className="text-xs text-red-400 hover:text-red-300 hover:underline flex items-center gap-1 font-semibold"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Cart Items List */}
@@ -239,21 +404,21 @@ export default function CartSidebar({
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
-                          onClick={() => onUpdateQuantity(item.product.id, 0.250, true)}
+                          onClick={() => onUpdateQuantity(item.product.id, 0.25, true)}
                           className="px-2 py-0.5 bg-slate-800 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 text-[10px] rounded font-semibold transition"
                         >
                           250g
                         </button>
                         <button
                           type="button"
-                          onClick={() => onUpdateQuantity(item.product.id, 0.500, true)}
+                          onClick={() => onUpdateQuantity(item.product.id, 0.5, true)}
                           className="px-2 py-0.5 bg-slate-800 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 text-[10px] rounded font-semibold transition"
                         >
                           500g
                         </button>
                         <button
                           type="button"
-                          onClick={() => onUpdateQuantity(item.product.id, 1.000, true)}
+                          onClick={() => onUpdateQuantity(item.product.id, 1.0, true)}
                           className="px-2 py-0.5 bg-slate-800 hover:bg-sky-600/30 text-sky-400 border border-sky-500/30 text-[10px] rounded font-semibold transition"
                         >
                           1Kg
@@ -265,9 +430,11 @@ export default function CartSidebar({
 
                     <div className="flex items-center bg-slate-800 rounded-lg p-1 gap-1 ml-auto">
                       <button
-                        onClick={() => onUpdateQuantity(item.product.id, isKg ? -0.1 : -1, false)}
+                        onClick={() =>
+                          onUpdateQuantity(item.product.id, isKg ? -0.1 : -1, false)
+                        }
                         className="p-1 hover:bg-slate-700 rounded text-slate-300"
-                        title={isKg ? "-100g" : "-1"}
+                        title={isKg ? '-100g' : '-1'}
                       >
                         <Minus className="w-3 h-3" />
                       </button>
@@ -275,9 +442,11 @@ export default function CartSidebar({
                       <QuantityInput item={item} onUpdateQuantity={onUpdateQuantity} />
 
                       <button
-                        onClick={() => onUpdateQuantity(item.product.id, isKg ? 0.1 : 1, false)}
+                        onClick={() =>
+                          onUpdateQuantity(item.product.id, isKg ? 0.1 : 1, false)
+                        }
                         className="p-1 hover:bg-slate-700 rounded text-slate-300"
-                        title={isKg ? "+100g" : "+1"}
+                        title={isKg ? '+100g' : '+1'}
                       >
                         <Plus className="w-3 h-3" />
                       </button>
@@ -293,9 +462,7 @@ export default function CartSidebar({
         <div className="border-t border-slate-800 pt-4 space-y-3">
           <div className="flex justify-between text-slate-400 text-sm">
             <span>Subtotal</span>
-            <span className="text-white font-semibold">
-              LKR {totalAmount.toFixed(2)}
-            </span>
+            <span className="text-white font-semibold">LKR {totalAmount.toFixed(2)}</span>
           </div>
 
           <div className="flex justify-between text-white font-bold text-lg pt-1">
@@ -306,9 +473,7 @@ export default function CartSidebar({
           {/* Cash Input */}
           <div>
             <div className="flex justify-between items-center">
-              <label className="text-xs text-slate-400 font-medium">
-                Cash Received (LKR)
-              </label>
+              <label className="text-xs text-slate-400 font-medium">Cash Received (LKR)</label>
               {isCashInsufficient && (
                 <span className="text-[10px] text-red-400 flex items-center gap-1 font-medium">
                   <AlertCircle className="w-3 h-3" /> Insufficient
@@ -321,7 +486,9 @@ export default function CartSidebar({
               value={cashGiven}
               onChange={(e) => setCashGiven(e.target.value)}
               className={`w-full bg-slate-950 border rounded-xl p-2.5 text-white font-bold mt-1 outline-none transition ${
-                isCashInsufficient ? 'border-red-500/80 focus:border-red-500' : 'border-slate-800 focus:border-sky-500'
+                isCashInsufficient
+                  ? 'border-red-500/80 focus:border-red-500'
+                  : 'border-slate-800 focus:border-sky-500'
               }`}
             />
           </div>
@@ -340,7 +507,9 @@ export default function CartSidebar({
           )}
 
           <button
-            disabled={submitting || processing || cart.length === 0 || paidAmount < totalAmount}
+            disabled={
+              submitting || processing || cart.length === 0 || paidAmount < totalAmount
+            }
             onClick={executeCheckout}
             className="w-full bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-600 font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 mt-2 shadow-lg shadow-sky-500/10"
           >
@@ -349,6 +518,17 @@ export default function CartSidebar({
           </button>
         </div>
       </div>
+
+      {/* Custom Item Modal */}
+      <CustomItemModal
+        isOpen={isCustomModalOpen}
+        onClose={() => setIsCustomModalOpen(false)}
+        onAddItem={(customItem) => {
+          if (onAddCustomToCart) {
+            onAddCustomToCart(customItem)
+          }
+        }}
+      />
 
       {/* Receipt Modal */}
       {completedOrder && (

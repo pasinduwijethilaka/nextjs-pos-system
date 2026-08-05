@@ -8,12 +8,13 @@ export interface Product {
   name: string
   barcode: string
   price: number
-  cost_price: number
+  cost_price?: number
   stock_quantity: number
   category_id: number
-  image_url: string
+  image_url: string | null
   discount_percentage?: number
   unit_type?: 'unit' | 'kg' | 'g'
+  is_custom?: boolean
 }
 
 export interface CartItem {

@@ -12,7 +12,7 @@ interface ReceiptModalProps {
   totalAmount: number
   paidAmount: number
   changeAmount: number
-  settings?: ReceiptSettings // Optional Direct Props
+  settings?: ReceiptSettings
 }
 
 // ⚙️ Default Fallback Settings
@@ -82,8 +82,49 @@ export default function ReceiptModal({
   const subTotal = totalAmount + totalSavings
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 text-slate-100 relative shadow-2xl">
+    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto print:p-0 print:bg-white">
+      
+      {/* 🖨️ Global Thermal Printer CSS (80mm Auto-Page Formatting) */}
+      <style jsx global>{`
+        @media print {
+          /* Page size format for standard POS printers */
+          @page {
+            size: 80mm auto;
+            margin: 0;
+          }
+
+          body {
+            background-color: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+          }
+
+          /* Hide UI elements except print receipt */
+          body * {
+            visibility: hidden;
+          }
+
+          #printable-receipt, #printable-receipt * {
+            visibility: visible;
+          }
+
+          #printable-receipt {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 78mm !important;
+            max-width: 78mm !important;
+            margin: 0 auto !important;
+            padding: 4mm 2mm !important;
+            box-shadow: none !important;
+            background: white !important;
+            color: black !important;
+            font-family: 'Courier New', Courier, monospace !important;
+          }
+        }
+      `}</style>
+
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 text-slate-100 relative shadow-2xl print:bg-transparent print:border-none print:shadow-none print:p-0">
         
         {/* Top Header Controls (Hidden when printing) */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4 print:hidden">
@@ -100,13 +141,13 @@ export default function ReceiptModal({
         </div>
 
         {/* 🖨️ PRINTABLE RECEIPT CONTAINER */}
-        <div id="printable-receipt" className="bg-white text-black p-6 rounded-lg font-mono text-xs space-y-4">
+        <div id="printable-receipt" className="bg-white text-black p-6 rounded-lg font-mono text-xs space-y-3 print:p-0 print:rounded-none">
           
           {/* 🏪 Shop Header */}
           <div className="text-center border-b border-dashed border-gray-400 pb-3">
             <h2 className="text-base font-bold uppercase tracking-wider">{activeSettings.storeName}</h2>
-            {activeSettings.storeAddress && <p className="text-[10px] text-gray-600">{activeSettings.storeAddress}</p>}
-            {activeSettings.storePhone && <p className="text-[10px] text-gray-600">Tel: {activeSettings.storePhone}</p>}
+            {activeSettings.storeAddress && <p className="text-[10px] text-gray-600 leading-tight">{activeSettings.storeAddress}</p>}
+            {activeSettings.storePhone && <p className="text-[10px] text-gray-600 leading-tight">Tel: {activeSettings.storePhone}</p>}
           </div>
 
           {/* 📅 Meta Info */}
@@ -117,9 +158,9 @@ export default function ReceiptModal({
 
           {/* 🛒 Items Table */}
           <div className="border-t border-b border-dashed border-gray-400 py-2">
-            <div className="grid grid-cols-12 font-bold mb-2 border-b border-gray-200 pb-1 text-gray-700 text-[11px]">
+            <div className="grid grid-cols-12 font-bold mb-1 border-b border-gray-200 pb-1 text-gray-800 text-[11px]">
               <span className="col-span-6">ITEM</span>
-              <span className="col-span-3 text-center">QTY / WEIGHT</span>
+              <span className="col-span-3 text-center">QTY</span>
               <span className="col-span-3 text-right">PRICE</span>
             </div>
             
@@ -133,7 +174,7 @@ export default function ReceiptModal({
                 : originalPrice
               const lineTotal = finalUnitPrice * item.quantity
 
-              // Weight / Quantity Display (e.g., 250g, 1.5Kg, or x2)
+              // Weight / Quantity Display
               const formattedQty = isKg
                 ? item.quantity < 1
                   ? `${Math.round(item.quantity * 1000)}g`
@@ -141,26 +182,26 @@ export default function ReceiptModal({
                 : `x${item.quantity}`
 
               return (
-                <div key={p.id} className="grid grid-cols-12 my-2 items-start">
+                <div key={p.id} className="grid grid-cols-12 my-1.5 items-start">
                   <div className="col-span-6 pr-1">
                     <div className="font-sans font-semibold text-gray-900 leading-tight">
                       {p.name}
                     </div>
                     {/* Unit price indicator */}
-                    <div className="text-[9px] text-gray-500">
+                    <div className="text-[9px] text-gray-600">
                       @{finalUnitPrice.toFixed(2)}{isKg ? '/Kg' : ''}
                     </div>
                     {/* Admin Settings වල showOriginalPrice ON කර ඇත්නම් පමණක් Regular Price පෙන්වයි */}
                     {activeSettings.showOriginalPrice && discountPercent > 0 && (
-                      <div className="text-[9px] text-gray-400 line-through">
-                        Reg: LKR {originalPrice.toFixed(2)} (-{discountPercent}%)
+                      <div className="text-[9px] text-gray-500 line-through">
+                        Reg: {originalPrice.toFixed(2)} (-{discountPercent}%)
                       </div>
                     )}
                   </div>
-                  <div className="col-span-3 text-center text-gray-800 font-medium pt-0.5">
+                  <div className="col-span-3 text-center text-gray-800 font-medium pt-0.5 text-[11px]">
                     {formattedQty}
                   </div>
-                  <div className="col-span-3 text-right font-bold text-gray-900 pt-0.5">
+                  <div className="col-span-3 text-right font-bold text-gray-900 pt-0.5 text-[11px]">
                     {lineTotal.toFixed(2)}
                   </div>
                 </div>
@@ -171,25 +212,25 @@ export default function ReceiptModal({
           {/* 💰 Totals */}
           <div className="space-y-1 text-[11px] pt-1">
             {activeSettings.showOriginalPrice && totalSavings > 0 && (
-              <div className="flex justify-between text-gray-500">
+              <div className="flex justify-between text-gray-600">
                 <span>SUBTOTAL:</span>
                 <span className="line-through">LKR {subTotal.toFixed(2)}</span>
               </div>
             )}
             
             {totalSavings > 0 && (
-              <div className="flex justify-between text-green-700 font-bold">
+              <div className="flex justify-between text-green-800 font-bold">
                 <span>DISCOUNT:</span>
                 <span>- LKR {totalSavings.toFixed(2)}</span>
               </div>
             )}
 
-            <div className="flex justify-between font-black text-sm text-black pt-1 border-t border-gray-300 mt-1">
+            <div className="flex justify-between font-black text-sm text-black pt-1 border-t border-gray-400 mt-1">
               <span>FINAL TOTAL:</span>
               <span>LKR {totalAmount.toFixed(2)}</span>
             </div>
             
-            <div className="flex justify-between text-gray-700 pt-2">
+            <div className="flex justify-between text-gray-800 pt-1">
               <span>CASH PAID:</span>
               <span>LKR {paidAmount.toFixed(2)}</span>
             </div>
@@ -199,15 +240,15 @@ export default function ReceiptModal({
             </div>
           </div>
 
-          {/* 🎉 Customer Satisfaction Banner */}
+          {/* 🎉 Customer Savings Banner */}
           {activeSettings.showSavingsBanner && totalSavings > 0 && (
-            <div className="text-center bg-gray-100 py-2 my-2 rounded text-[10px] font-black text-green-800 border border-green-300 tracking-tight shadow-sm">
+            <div className="text-center bg-gray-100 py-1.5 my-2 rounded text-[10px] font-black text-gray-900 border border-gray-300 tracking-tight">
               🎉 YOU SAVED LKR {totalSavings.toFixed(2)} TODAY!
             </div>
           )}
 
           {/* 💬 Footer Note */}
-          <div className="text-center border-t border-dashed border-gray-400 pt-3 text-[10px] text-gray-600 font-medium">
+          <div className="text-center border-t border-dashed border-gray-400 pt-2 text-[10px] text-gray-600 font-medium">
             <p>{activeSettings.footerMessage}</p>
           </div>
         </div>
@@ -229,28 +270,6 @@ export default function ReceiptModal({
         </div>
 
       </div>
-
-      {/* 🖨️ Global CSS for Clean Printing */}
-      <style jsx global>{`
-        @media print {
-          body * {
-            visibility: hidden;
-          }
-          #printable-receipt, #printable-receipt * {
-            visibility: visible;
-          }
-          #printable-receipt {
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 100%;
-            margin: 0;
-            padding: 10px;
-            box-shadow: none;
-            background: white;
-          }
-        }
-      `}</style>
     </div>
   )
 }
