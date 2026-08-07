@@ -59,7 +59,7 @@ export default function ProductForm({
     <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl h-fit">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-xl font-bold text-white">
-          {editingProductId ? 'Edit Product' : 'Add New Product'}
+          {editingProductId ? 'භාණ්ඩය සංස්කරණය (Edit Product)' : 'අලුත් භාණ්ඩයක් එකතු කරන්න (Add Product)'}
         </h2>
         {editingProductId && (
           <button
@@ -67,7 +67,7 @@ export default function ProductForm({
             onClick={resetForm}
             className="text-xs text-sky-400 hover:underline flex items-center gap-1"
           >
-            <RefreshCw className="w-3 h-3" /> Reset
+            <RefreshCw className="w-3 h-3" /> මුල සිට (Reset)
           </button>
         )}
       </div>
@@ -75,13 +75,13 @@ export default function ProductForm({
       <form onSubmit={handleSubmitProduct} className="space-y-4">
         {/* Product Name */}
         <div>
-          <label className="block text-xs font-semibold text-slate-400 mb-1">Product Name *</label>
+          <label className="block text-xs font-semibold text-slate-400 mb-1">භාණ්ඩයේ නම (Product Name) *</label>
           <input
             type="text"
             required
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Sugar / Milk Powder 400g"
+            placeholder="උදා: සීනි / කිරි පිටි 400g"
             className="w-full bg-slate-950 border border-slate-800 text-sm text-white rounded-xl p-3 outline-none focus:border-sky-500"
           />
         </div>
@@ -89,15 +89,15 @@ export default function ProductForm({
         {/* ⚖️ Selling Unit Type Selection */}
         <div>
           <label className="block text-xs font-semibold text-emerald-400 mb-1 flex items-center gap-1">
-            <Scale className="w-3.5 h-3.5" /> Selling Unit Type *
+            <Scale className="w-3.5 h-3.5" /> විකුණන ක්‍රමය (Unit Type) *
           </label>
           <select
             value={unitType}
             onChange={(e) => setUnitType(e.target.value as 'unit' | 'kg')}
             className="w-full bg-slate-950 border border-emerald-500/40 text-sm text-emerald-300 font-semibold rounded-xl p-3 outline-none focus:border-emerald-500"
           >
-            <option value="unit">Packet / Piece / Unit (Pcs)</option>
-            <option value="kg">Per Kilogram (Loose / Weighted - Kg)</option>
+            <option value="unit">පැකට් / කෑලි වශයෙන් (Pcs / Unit)</option>
+            <option value="kg">කිලෝග්‍රෑම් / බරට (Kilogram - Kg)</option>
           </select>
         </div>
 
@@ -105,7 +105,7 @@ export default function ProductForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1">
-              {unitType === 'kg' ? 'Price Per 1 Kg (LKR) *' : 'Selling Price (LKR) *'}
+              {unitType === 'kg' ? '1 Kg මිල (LKR) *' : 'විකුණුම් මිල (LKR) *'}
             </label>
             <input
               type="number"
@@ -119,7 +119,7 @@ export default function ProductForm({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Cost Price (LKR)</label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">ගැනුම් මිල (Cost Price)</label>
             <input
               type="number"
               step="0.01"
@@ -134,7 +134,7 @@ export default function ProductForm({
         {/* 🏷️ Discount % & Stock Quantity */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label className="block text-xs font-semibold text-amber-400 mb-1">Discount (%)</label>
+            <label className="block text-xs font-semibold text-amber-400 mb-1">වට්ටම් (Discount %)</label>
             <input
               type="number"
               min="0"
@@ -149,7 +149,7 @@ export default function ProductForm({
 
           <div>
             <label className="block text-xs font-semibold text-slate-400 mb-1">
-              {unitType === 'kg' ? 'Stock Quantity (Kg) *' : 'Stock Quantity (Units) *'}
+              {unitType === 'kg' ? 'තොග ප්‍රමාණය (Kg) *' : 'තොග ප්‍රමාණය (Units) *'}
             </label>
             <input
               type="number"
@@ -157,7 +157,7 @@ export default function ProductForm({
               required
               value={stock}
               onChange={(e) => setStock(e.target.value)}
-              placeholder={unitType === 'kg' ? "e.g. 50 (50Kg)" : "0"}
+              placeholder={unitType === 'kg' ? "උදා: 50 (50Kg)" : "0"}
               className="w-full bg-slate-950 border border-slate-800 text-sm text-white rounded-xl p-3 outline-none focus:border-sky-500 font-mono"
             />
           </div>
@@ -167,7 +167,7 @@ export default function ProductForm({
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-semibold text-sky-400 mb-1 flex items-center gap-1">
-              <Barcode className="w-3.5 h-3.5" /> Barcode
+              <Barcode className="w-3.5 h-3.5" /> බා.ර්.කෝ.ඩ් (Barcode)
             </label>
             <input
               type="text"
@@ -175,19 +175,19 @@ export default function ProductForm({
               name="barcode"
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
-              placeholder="Ready to scan..."
+              placeholder="Scan කරන්න..."
               className="w-full bg-slate-950 border border-sky-500/30 text-sm text-sky-300 rounded-xl p-3 outline-none focus:border-sky-500 font-mono"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-400 mb-1">Category</label>
+            <label className="block text-xs font-semibold text-slate-400 mb-1">ව.ර්.ග.ය (Category)</label>
             <select
               value={categoryId}
               onChange={(e) => setCategoryId(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 text-sm text-slate-300 rounded-xl p-3 outline-none focus:border-sky-500"
             >
-              <option value="">Select Category</option>
+              <option value=""> ව.ර්.ග.ය.ක් තෝරන්න</option>
               {categories.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
@@ -199,7 +199,7 @@ export default function ProductForm({
 
         {/* Image URL */}
         <div>
-          <label className="block text-xs font-semibold text-slate-400 mb-1">Image URL</label>
+          <label className="block text-xs font-semibold text-slate-400 mb-1">පින්තූර ලිපිනය (Image URL)</label>
           <input
             type="text"
             value={imageUrl}
@@ -217,11 +217,11 @@ export default function ProductForm({
         >
           {editingProductId ? (
             <>
-              <Save className="w-4 h-4" /> {submitting ? 'Updating...' : 'Update Product'}
+              <Save className="w-4 h-4" /> {submitting ? 'යාවත්කාලීන වෙමින්...' : 'තොරතුරු යාවත්කාලීන කරන්න (Update)'}
             </>
           ) : (
             <>
-              <PlusCircle className="w-4 h-4" /> {submitting ? 'Adding...' : 'Add Product'}
+              <PlusCircle className="w-4 h-4" /> {submitting ? 'එකතු වෙමින්...' : 'භාණ්ඩය ඇතුළත් කරන්න (Save)'}
             </>
           )}
         </button>
