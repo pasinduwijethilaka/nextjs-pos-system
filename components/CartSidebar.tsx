@@ -15,8 +15,11 @@ import {
   X,
   Tag,
   DollarSign,
+  Banknote,
 } from 'lucide-react'
 import ReceiptModal from '@/components/ReceiptModal'
+
+const DUMMY_PRODUCT_ID = 8 // Custom products සඳහා DB එකේ ඇති reference ID එක
 
 interface CartSidebarProps {
   cart: CartItem[]
@@ -133,7 +136,6 @@ function CustomItemModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-sm w-full p-6 text-slate-100 relative shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-800 pb-4 mb-4">
           <h3 className="font-bold text-white text-base flex items-center gap-2">
             <PlusCircle className="w-5 h-5 text-sky-400" /> Add Custom Item
@@ -147,7 +149,6 @@ function CustomItemModal({
           </button>
         </div>
 
-        {/* Input Form */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-semibold text-slate-400 uppercase mb-1">
@@ -157,7 +158,7 @@ function CustomItemModal({
               <Tag className="w-4 h-4 text-slate-500 absolute left-3 top-3" />
               <input
                 type="text"
-                placeholder="e.g. Miscellaneous Item"
+                placeholder="e.g. Open Item / Service"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 className="w-full bg-slate-950 border border-slate-800 rounded-xl py-2.5 pl-9 pr-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition"
@@ -229,6 +230,7 @@ export default function CartSidebar({
   processing = false,
 }: CartSidebarProps) {
   const [cashGiven, setCashGiven] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash')
   const [submitting, setSubmitting] = useState(false)
   const [isCustomModalOpen, setIsCustomModalOpen] = useState(false)
 
@@ -242,19 +244,21 @@ export default function CartSidebar({
     change: number
   } | null>(null)
 
-  const totalAmount = cart.reduce(
-    (sum, item) => sum + getEffectivePrice(item.product) * item.quantity,
-    0
+  const totalAmount = Number(
+    cart
+      .reduce((sum, item) => sum + getEffectivePrice(item.product) * item.quantity, 0)
+      .toFixed(2)
   )
 
-  const paidAmount = parseFloat(cashGiven) || 0
+  const paidAmount = paymentMethod === 'card' ? totalAmount : parseFloat(cashGiven) || 0
   const changeAmount = paidAmount >= totalAmount ? paidAmount - totalAmount : 0
-  const isCashInsufficient = cashGiven !== '' && paidAmount < totalAmount
+  const isCashInsufficient =
+    paymentMethod === 'cash' && cashGiven !== '' && paidAmount < totalAmount
 
   // 🚀 Improved Safe Atomic Checkout Strategy using Supabase RPC
   const executeCheckout = async () => {
     if (cart.length === 0) return alert('Cart is empty!')
-    if (paidAmount < totalAmount) {
+    if (paymentMethod === 'cash' && paidAmount < totalAmount) {
       return alert('Paid cash amount is insufficient!')
     }
 
@@ -263,7 +267,7 @@ export default function CartSidebar({
     try {
       // Prepare items payload for Postgres RPC Function
       const itemsPayload = cart.map((item) => ({
-        product_id: item.product.id,
+        product_id: item.product.is_custom || item.product.id < 0 ? DUMMY_PRODUCT_ID : item.product.id,
         quantity: item.quantity,
         unit_price: getEffectivePrice(item.product),
       }))
@@ -307,7 +311,6 @@ export default function CartSidebar({
           </div>
 
           <div className="flex items-center gap-2">
-            {/* ➕ Custom Item Add Button */}
             <button
               type="button"
               onClick={() => setIsCustomModalOpen(true)}
@@ -470,30 +473,90 @@ export default function CartSidebar({
             <span className="text-sky-400">LKR {totalAmount.toFixed(2)}</span>
           </div>
 
-          {/* Cash Input */}
-          <div>
-            <div className="flex justify-between items-center">
-              <label className="text-xs text-slate-400 font-medium">Cash Received (LKR)</label>
-              {isCashInsufficient && (
-                <span className="text-[10px] text-red-400 flex items-center gap-1 font-medium">
-                  <AlertCircle className="w-3 h-3" /> Insufficient
-                </span>
-              )}
-            </div>
-            <input
-              type="number"
-              placeholder="0.00"
-              value={cashGiven}
-              onChange={(e) => setCashGiven(e.target.value)}
-              className={`w-full bg-slate-950 border rounded-xl p-2.5 text-white font-bold mt-1 outline-none transition ${
-                isCashInsufficient
-                  ? 'border-red-500/80 focus:border-red-500'
-                  : 'border-slate-800 focus:border-sky-500'
+          {/* Payment Method Selector */}
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('cash')}
+              className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
+                paymentMethod === 'cash'
+                  ? 'bg-sky-500/10 border-sky-500 text-sky-400'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
               }`}
-            />
+            >
+              <Banknote className="w-4 h-4" /> Cash
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentMethod('card')}
+              className={`py-2 px-3 rounded-xl border text-xs font-bold flex items-center justify-center gap-2 transition ${
+                paymentMethod === 'card'
+                  ? 'bg-sky-500/10 border-sky-500 text-sky-400'
+                  : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+              }`}
+            >
+              <CreditCard className="w-4 h-4" /> Card
+            </button>
           </div>
 
-          {paidAmount > 0 && (
+          {/* Cash Input & Quick Buttons (Visible only for Cash Payment) */}
+          {paymentMethod === 'cash' && (
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <label className="text-xs text-slate-400 font-medium">Cash Received (LKR)</label>
+                {isCashInsufficient && (
+                  <span className="text-[10px] text-red-400 flex items-center gap-1 font-medium">
+                    <AlertCircle className="w-3 h-3" /> Insufficient
+                  </span>
+                )}
+              </div>
+              <input
+                type="number"
+                placeholder="0.00"
+                value={cashGiven}
+                onChange={(e) => setCashGiven(e.target.value)}
+                className={`w-full bg-slate-950 border rounded-xl p-2.5 text-white font-bold outline-none transition ${
+                  isCashInsufficient
+                    ? 'border-red-500/80 focus:border-red-500'
+                    : 'border-slate-800 focus:border-sky-500'
+                }`}
+              />
+
+              {/* Quick Cash Buttons */}
+              <div className="grid grid-cols-4 gap-1.5 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setCashGiven(totalAmount.toString())}
+                  className="py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-semibold rounded-lg border border-slate-700/50"
+                >
+                  Exact
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashGiven('500')}
+                  className="py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-semibold rounded-lg border border-slate-700/50"
+                >
+                  500
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashGiven('1000')}
+                  className="py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-semibold rounded-lg border border-slate-700/50"
+                >
+                  1,000
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCashGiven('5000')}
+                  className="py-1 bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 font-semibold rounded-lg border border-slate-700/50"
+                >
+                  5,000
+                </button>
+              </div>
+            </div>
+          )}
+
+          {paymentMethod === 'cash' && paidAmount > 0 && (
             <div className="flex justify-between text-xs font-semibold px-1">
               <span className="text-slate-400">Balance to give:</span>
               <span
@@ -508,13 +571,18 @@ export default function CartSidebar({
 
           <button
             disabled={
-              submitting || processing || cart.length === 0 || paidAmount < totalAmount
+              submitting ||
+              processing ||
+              cart.length === 0 ||
+              (paymentMethod === 'cash' && paidAmount < totalAmount)
             }
             onClick={executeCheckout}
             className="w-full bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-600 font-bold py-3.5 rounded-xl transition flex items-center justify-center gap-2 mt-2 shadow-lg shadow-sky-500/10"
           >
             <CreditCard className="w-5 h-5" />
-            {submitting || processing ? 'Processing Order...' : 'Complete Checkout'}
+            {submitting || processing
+              ? 'Processing Order...'
+              : `Complete ${paymentMethod === 'card' ? 'Card' : 'Cash'} Checkout`}
           </button>
         </div>
       </div>

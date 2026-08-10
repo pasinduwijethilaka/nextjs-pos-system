@@ -11,7 +11,7 @@ import SalesChart from './SalesChart'
 import ProductForm from './ProductForm'
 import InventoryTable from './InventoryTable'
 import AdminAuthModal from './AdminAuthModal'
-import ReceiptSettingsControl from './ReceiptSettingsControl' 
+import ReceiptSettingsControl from './ReceiptSettingsControl'
 
 interface OrderSummary {
   id: number
@@ -37,9 +37,9 @@ export default function AdminDashboard() {
   const [barcode, setBarcode] = useState('')
   const [price, setPrice] = useState('')
   const [costPrice, setCostPrice] = useState('')
-  const [discount, setDiscount] = useState('') // 🏷️ Discount Percentage State
+  const [discount, setDiscount] = useState('')
   const [stock, setStock] = useState('')
-  const [unitType, setUnitType] = useState<'unit' | 'kg' | 'g'>('unit') // ⚖️ Supports 'unit', 'kg', and 'g'
+  const [unitType, setUnitType] = useState<'unit' | 'kg' | 'g'>('unit')
   const [categoryId, setCategoryId] = useState('')
   const [imageUrl, setImageUrl] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -56,7 +56,6 @@ export default function AdminDashboard() {
 
   // 🔍 Hardware Barcode Scanner Listener
   useEffect(() => {
-    // Auth වී නැතිනම් Scanner එක active කිරීම අවශ්‍ය නැත
     if (!isAuthenticated) return
 
     let barcodeBuffer = ''
@@ -64,36 +63,26 @@ export default function AdminDashboard() {
 
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement
-      
-      // වෙනත් input හෝ textarea එකක type කරද්දී, එය "barcode" input එක නොවේ නම් scanner එක මඟින් එය override කිරීම වළක්වයි
-      if (
-        target.tagName === 'INPUT' || 
-        target.tagName === 'TEXTAREA'
-      ) {
-        // Form එකේ barcode field එක ඇතුළේ කෙලින්ම type කරනවා නම් සාමාන්‍ය පරිදි type වෙන්න දෙන්න
+
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         if (target.getAttribute('name') === 'barcode' || target.getAttribute('id') === 'barcode') {
           return
         }
-        // වෙනත් field එකක (උදා: Product Name, Price) type කරන විට global scanner listener එක නතර කරන්න
         return
       }
 
-      // Scanner එකකින් Scan කර අවසන් වූ පසු සාමාන්‍යයෙන් Enter Key එකක් එයි
       if (e.key === 'Enter') {
         if (barcodeBuffer.trim().length > 0) {
           e.preventDefault()
-          setBarcode(barcodeBuffer.trim()) // Barcode state එකට අගය එකතු කිරීම
+          setBarcode(barcodeBuffer.trim())
           barcodeBuffer = ''
         }
         return
       }
 
-      // Scanner එකෙන් එන Characters එකින් එක Buffer එකට එකතු කිරීම
       if (e.key.length === 1) {
         barcodeBuffer += e.key
 
-        // Hardware scanner එකක් ඉතා වේගයෙන් type කරයි (~10-50ms). 
-        // මිනිසෙකු ටයිප් කරනවාට වඩා වේගවත් බැවින් තත්පර 0.1කින් buffer එක auto clear වේ.
         clearTimeout(timeoutId)
         timeoutId = setTimeout(() => {
           barcodeBuffer = ''
@@ -115,14 +104,20 @@ export default function AdminDashboard() {
   }
 
   const handleAuthCancel = () => {
-    router.push('/') // Main Terminal එකට රීඩිරෙක්ට් කිරීම
+    router.push('/')
   }
 
+  // 🔄 Fetch Products with Active Batches
   const fetchAdminData = async () => {
     setLoading(true)
-    const { data: prodData } = await supabase
+
+    // Fetch products along with their active product_batches
+    const { data: prodData, error: prodErr } = await supabase
       .from('products')
-      .select('*')
+      .select(`
+        *,
+        batches:product_batches(*)
+      `)
       .order('id', { ascending: true })
 
     const { data: catData } = await supabase.from('categories').select('*')
@@ -132,7 +127,7 @@ export default function AdminDashboard() {
       .select('id, total_amount, created_at')
       .order('created_at', { ascending: true })
 
-    if (prodData) setProducts(prodData)
+    if (prodData && !prodErr) setProducts(prodData as Product[])
     if (catData) setCategories(catData)
     if (orderData) setOrders(orderData)
     setLoading(false)
@@ -144,14 +139,14 @@ export default function AdminDashboard() {
     setBarcode(product.barcode || '')
     setPrice(product.price.toString())
     setCostPrice(product.cost_price ? product.cost_price.toString() : '')
-    setDiscount(product.discount_percentage ? product.discount_percentage.toString() : '') // Load discount %
+    setDiscount(product.discount_percentage ? product.discount_percentage.toString() : '')
     setStock(product.stock_quantity.toString())
-    setUnitType((product.unit_type as 'unit' | 'kg' | 'g') || 'unit') // Safely set unit_type
+    setUnitType((product.unit_type as 'unit' | 'kg' | 'g') || 'unit')
     setCategoryId(product.category_id ? product.category_id.toString() : '')
     setImageUrl(product.image_url || '')
   }
 
-  // 🗑️ Product Delete Handler
+  // 🗑️ Delete Main Product
   const handleDeleteProduct = async (productId: number, productName: string) => {
     const confirmDelete = window.confirm(`Are you sure you want to delete "${productName}"?`)
     if (!confirmDelete) return
@@ -171,22 +166,49 @@ export default function AdminDashboard() {
     }
   }
 
+  // 🗑️ Delete Specific Batch
+  const handleDeleteBatch = async (batchId: number) => {
+    const confirmDelete = window.confirm('මෙම Stock Batch එක ඉවත් කිරීමට තහවුරු කරන්නද?')
+    if (!confirmDelete) return
+
+    try {
+      const { error } = await supabase
+        .from('product_batches')
+        .delete()
+        .eq('id', batchId)
+
+      if (error) throw error
+
+      alert('Stock Batch එක සාර්ථකව ඉවත් කරන ලදී! 🗑️')
+      fetchAdminData() // Reload table and calculations
+    } catch (err: any) {
+      alert('Failed to delete batch: ' + err.message)
+    }
+  }
+
   const resetForm = () => {
     setEditingProductId(null)
     setName('')
     setBarcode('')
     setPrice('')
     setCostPrice('')
-    setDiscount('') // Reset discount state
+    setDiscount('')
     setStock('')
-    setUnitType('unit') // Reset unitType state
+    setUnitType('unit')
     setCategoryId('')
     setImageUrl('')
   }
 
   const totalRevenue = orders.reduce((sum, o) => sum + Number(o.total_amount), 0)
   const totalOrders = orders.length
-  const lowStockCount = products.filter((p) => p.stock_quantity < 5).length
+
+  // Calculate Low Stock Count incorporating Batches
+  const lowStockCount = products.filter((p) => {
+    const totalStock = p.batches && p.batches.length > 0
+      ? p.batches.reduce((sum, b) => sum + (b.stock_quantity || 0), 0)
+      : p.stock_quantity || 0
+    return totalStock <= 5
+  }).length
 
   const chartData = orders.map((o) => ({
     date: new Date(o.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -204,9 +226,9 @@ export default function AdminDashboard() {
       barcode: barcode || null,
       price: parseFloat(price),
       cost_price: costPrice ? parseFloat(costPrice) : null,
-      discount_percentage: discount ? parseFloat(discount) : 0, // Save discount %
-      stock_quantity: parseFloat(stock), // Supports decimals for Kg/g stock
-      unit_type: unitType, // Save unit_type
+      discount_percentage: discount ? parseFloat(discount) : 0,
+      stock_quantity: parseFloat(stock),
+      unit_type: unitType,
       category_id: categoryId ? parseInt(categoryId) : null,
       image_url: imageUrl || null,
     }
@@ -236,7 +258,6 @@ export default function AdminDashboard() {
     }
   }
 
-  // 🔐 Auth වී නැත්නම් Modal එක විතරක් Render කිරීම
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center">
@@ -249,7 +270,6 @@ export default function AdminDashboard() {
     )
   }
 
-  // 🔐 Auth වුණාට පසු පෙන්වන Dashboard View
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-8">
       {/* Header */}
@@ -316,6 +336,7 @@ export default function AdminDashboard() {
             products={products}
             handleEditClick={handleEditClick}
             onDeleteClick={handleDeleteProduct}
+            onDeleteBatchClick={handleDeleteBatch}
             onStockUpdated={fetchAdminData}
           />
         </div>

@@ -1,13 +1,14 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Product, Category, CartItem } from '@/types'
+import { Product, Category, CartItem, ProductBatch } from '@/types'
 
 import Header from '@/components/Header'
 import CategoryFilter from '@/components/CategoryFilter'
 import ProductGrid from '@/components/ProductGrid'
 import CartSidebar from '@/components/CartSidebar'
+import PriceSelectionModal from '@/components/PriceSelectionModal'
 
 const DUMMY_PRODUCT_ID = 8
 
@@ -26,11 +27,100 @@ export default function POSTerminal() {
   const [searchQuery, setSearchQuery] = useState('')
   const [cart, setCart] = useState<CartItem[]>([])
   const [loading, setLoading] = useState(true)
-  const [processing, setProcessing] = useState(false)
+
+  // Batch / Price Modal States
+  const [isPriceModalOpen, setIsPriceModalOpen] = useState(false)
+  const [selectedModalProduct, setSelectedModalProduct] = useState<Product | null>(null)
+
+  // 🔄 Fetch Data Function
+  const fetchData = async () => {
+    setLoading(true)
+
+    // 1. Fetch Categories
+    const { data: catData } = await supabase.from('categories').select('*')
+
+    // 2. Fetch Products with Batches
+    const { data: productsData, error } = await supabase
+      .from('products')
+      .select(`
+        *,
+        batches:product_batches(*)
+      `)
+      .order('id', { ascending: true })
+
+    if (error) {
+      console.error('Error fetching products:', error)
+    }
+
+    if (catData) setCategories(catData)
+
+    if (productsData) {
+      // Dummy product එක අයින් කරලා state එකට set කිරීම
+      setProducts(productsData.filter((p) => p.id !== DUMMY_PRODUCT_ID))
+    }
+
+    setLoading(false)
+  }
 
   useEffect(() => {
     fetchData()
   }, [])
+
+  // 🛒 Add Item directly to Cart (or trigger Batch Modal if multiple prices exist)
+  const addToCart = useCallback((product: Product, initialQty: number = 1) => {
+    if (product.stock_quantity <= 0) {
+      return alert('Out of stock! මේ Item එකේ Stock ඉවරයි.')
+    }
+
+    // Product එකට Multiple Batches/Prices තියෙනවා නම් Modal එක Open කරන්න
+    if (product.batches && product.batches.length > 1) {
+      setSelectedModalProduct(product)
+      setIsPriceModalOpen(true)
+      return
+    }
+
+    // Batch 1ක් පමණක් තියෙනවා නම් හෝ Batches නැත්නම් direct Add කරන්න
+    addItemToCartWithBatch(product, product.batches?.[0])
+  }, [])
+
+  // 📦 Selected Batch එකත් එක්ක Item එක Cart එකට දාන Logic එක
+  const addItemToCartWithBatch = (product: Product, selectedBatch?: ProductBatch) => {
+    const finalPrice = selectedBatch?.unit_price || product.price
+
+    const productWithBatchPrice: Product = {
+      ...product,
+      price: finalPrice,
+      // Unique Cart Item ID Key (Batch තිබේ නම් Batch ID එකෙන්, නැතහොත් Product ID එකෙන්)
+      selected_batch_id: selectedBatch?.id,
+    }
+
+    setCart((prev) => {
+      // Cart එකේ එකම Product එකේ එකම Batch එක තියෙනවාදැයි පරීක්ෂා කිරීම
+      const existing = prev.find(
+        (item) =>
+          item.product.id === product.id &&
+          item.product.selected_batch_id === selectedBatch?.id
+      )
+
+      if (existing) {
+        const newQty = Number((existing.quantity + 1).toFixed(3))
+        if (newQty > (selectedBatch?.quantity || product.stock_quantity)) {
+          alert('Stock limit exceeded!')
+          return prev
+        }
+        return prev.map((item) =>
+          item.product.id === product.id &&
+          item.product.selected_batch_id === selectedBatch?.id
+            ? { ...item, quantity: newQty }
+            : item
+        )
+      }
+
+      return [...prev, { product: productWithBatchPrice, quantity: 1 }]
+    })
+
+    setIsPriceModalOpen(false)
+  }
 
   // 🔍 Hardware Barcode Scanner Listener
   useEffect(() => {
@@ -38,15 +128,21 @@ export default function POSTerminal() {
     let timeoutId: NodeJS.Timeout
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      // User Search bar එකේ type කරද්දී ගෝලීය barcode scan නොවීමට
       const target = e.target as HTMLElement
-      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target?.tagName)) {
         return
       }
 
       if (e.key === 'Enter') {
         if (barcodeBuffer.trim().length > 0) {
-          handleBarcodeScan(barcodeBuffer.trim())
+          const scannedBarcode = barcodeBuffer.trim()
+          const foundProduct = products.find((p) => p.barcode === scannedBarcode)
+
+          if (foundProduct) {
+            addToCart(foundProduct, 1)
+          } else {
+            alert(`Barcode "${scannedBarcode}" හිමි Product එකක් හමු නොවුණි!`)
+          }
           barcodeBuffer = ''
         }
         return
@@ -65,31 +161,9 @@ export default function POSTerminal() {
     window.addEventListener('keydown', handleKeyDown)
     return () => {
       window.removeEventListener('keydown', handleKeyDown)
+      clearTimeout(timeoutId)
     }
-  }, [products])
-
-  const handleBarcodeScan = (scannedBarcode: string) => {
-    const foundProduct = products.find((p) => p.barcode === scannedBarcode)
-
-    if (foundProduct) {
-      addToCart(foundProduct, 1)
-    } else {
-      alert(`Barcode "${scannedBarcode}" හිමි Product එකක් හමු නොවුණි!`)
-    }
-  }
-
-  const fetchData = async () => {
-    setLoading(true)
-    const { data: catData } = await supabase.from('categories').select('*')
-    const { data: prodData } = await supabase
-      .from('products')
-      .select('*')
-      .order('id', { ascending: true })
-
-    if (catData) setCategories(catData)
-    if (prodData) setProducts(prodData.filter((p) => p.id !== DUMMY_PRODUCT_ID))
-    setLoading(false)
-  }
+  }, [products, addToCart])
 
   const filteredProducts = products.filter((p) => {
     const matchesCategory = selectedCategory ? p.category_id === selectedCategory : true
@@ -99,59 +173,55 @@ export default function POSTerminal() {
     return matchesCategory && matchesSearch
   })
 
-  const addToCart = (product: Product, initialQty: number = 1) => {
-    if (product.stock_quantity <= 0) {
-      return alert('Out of stock! මේ Item එකේ Stock ඉවරයි.')
-    }
-
-    setCart((prev) => {
-      const existing = prev.find((item) => item.product.id === product.id)
-      if (existing) {
-        const newQty = Number((existing.quantity + initialQty).toFixed(3))
-        if (newQty > product.stock_quantity) {
-          alert(`Cannot add more! Only ${product.stock_quantity}${product.unit_type === 'kg' ? ' Kg' : ''} available in stock.`)
-          return prev
-        }
-        return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: newQty } : item
-        )
-      }
-      return [...prev, { product, quantity: initialQty }]
-    })
-  }
-
-  const handleAddCustomToCart = ({ name, price, quantity }: { name: string; price: number; quantity: number }) => {
-    const tempCartId = -Math.floor(100000 + Math.random() * 900000)
+  // ➕ Custom Item Add Handler
+  const handleAddCustomToCart = ({
+    name,
+    price,
+    quantity,
+  }: {
+    name: string
+    price: number
+    quantity: number
+  }) => {
+    const uniqueTempId = -Math.floor(Date.now() + Math.random() * 1000)
 
     const customProduct: Product = {
-      id: DUMMY_PRODUCT_ID,
+      id: uniqueTempId,
       name: name,
       price: price,
       cost_price: 0,
       category_id: categories[0]?.id || 1,
       stock_quantity: 999999,
-      barcode: `CUSTOM-${Math.abs(tempCartId)}`,
+      barcode: `CUSTOM-${Math.abs(uniqueTempId)}`,
       unit_type: 'unit',
       is_custom: true,
-      image_url: ''
+      image_url: '',
     }
 
     setCart((prev) => [...prev, { product: customProduct, quantity }])
   }
 
-  const updateQuantity = (productId: number, newQtyOrDelta: number, isDirectValue: boolean = false) => {
+  const updateQuantity = (
+    productId: number,
+    newQtyOrDelta: number,
+    isDirectValue: boolean = false
+  ) => {
     setCart((prev) =>
       prev
         .map((item) => {
           if (item.product.id === productId) {
-            const calculatedQty = isDirectValue 
-              ? newQtyOrDelta 
+            const calculatedQty = isDirectValue
+              ? newQtyOrDelta
               : item.quantity + newQtyOrDelta
 
             const finalQty = Number(calculatedQty.toFixed(3))
 
             if (finalQty > item.product.stock_quantity) {
-              alert(`Maximum stock limit reached! Only ${item.product.stock_quantity}${item.product.unit_type === 'kg' ? ' Kg' : ''} available.`)
+              alert(
+                `Maximum stock limit reached! Only ${item.product.stock_quantity}${
+                  item.product.unit_type === 'kg' ? ' Kg' : ''
+                } available.`
+              )
               return item
             }
             return finalQty > 0 ? { ...item, quantity: finalQty } : null
@@ -168,60 +238,6 @@ export default function POSTerminal() {
 
   const handleClearCart = () => {
     setCart([])
-  }
-
-  const handleCheckout = async (paymentMethod: 'cash' | 'card') => {
-    if (cart.length === 0) return alert('Cart is empty!')
-    setProcessing(true)
-
-    try {
-      const totalAmount = cart.reduce(
-        (sum, item) => sum + getEffectivePrice(item.product) * item.quantity,
-        0
-      )
-
-      const { data: order, error: orderErr } = await supabase
-        .from('orders')
-        .insert([{ total_amount: totalAmount, payment_method: paymentMethod }])
-        .select('id')
-        .single()
-
-      if (orderErr || !order) {
-        throw new Error(`Order save error: ${orderErr?.message}`)
-      }
-
-      const orderItemsData = cart.map((item) => ({
-        order_id: order.id,
-        product_id: item.product.id,
-        quantity: item.quantity,
-        unit_price: getEffectivePrice(item.product),
-      }))
-
-      const { error: itemsErr } = await supabase.from('order_items').insert(orderItemsData)
-
-      if (itemsErr) {
-        throw new Error(`Order items error: ${itemsErr.message}`)
-      }
-
-      for (const item of cart) {
-        if (item.product.id === DUMMY_PRODUCT_ID || item.product.is_custom) continue
-
-        const newStock = Math.max(0, Number((item.product.stock_quantity - item.quantity).toFixed(3)))
-
-        await supabase
-          .from('products')
-          .update({ stock_quantity: newStock })
-          .eq('id', item.product.id)
-      }
-
-      alert('Sale Completed Successfully! 🎉')
-      setCart([])
-      fetchData()
-    } catch (err: any) {
-      alert('Checkout Failed: ' + err.message)
-    } finally {
-      setProcessing(false)
-    }
   }
 
   return (
@@ -246,8 +262,14 @@ export default function POSTerminal() {
         removeFromCart={removeFromCart}
         onClearCart={handleClearCart}
         onAddCustomToCart={handleAddCustomToCart}
-        handleCheckout={handleCheckout}
-        processing={processing}
+      />
+
+      {/* Price Selection Modal */}
+      <PriceSelectionModal
+        isOpen={isPriceModalOpen}
+        product={selectedModalProduct}
+        onClose={() => setIsPriceModalOpen(false)}
+        onSelectBatch={addItemToCartWithBatch}
       />
     </div>
   )
